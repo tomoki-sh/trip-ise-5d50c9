@@ -520,7 +520,9 @@ body.day-single .sched-list .sched-day-head { display: none; }
 .pill:active { transform: scale(.97); }
 .pill.maps { background: var(--shu); }
 .pill.tabelog { background: #6a5d3c; }
-.pill.add-route { background: var(--cyan); border: none; cursor: pointer; font: inherit; font-weight: 600; }
+/* ★クラス名は add-sched。add-route は旧名で、当たらないまま残っていた（2026-09 に修正） */
+.pill.add-sched { background: var(--cyan); border: none; cursor: pointer; font: inherit; font-weight: 600; }
+.pill.ticket { background: var(--gold); border: none; cursor: pointer; font: inherit; font-weight: 600; }
 
 /* ===== マップ ===== */
 #map { height: 60vh; min-height: 360px; border-radius: var(--radius); border: 1px solid var(--line); box-shadow: var(--shadow); margin-bottom: 1rem; }
@@ -913,4 +915,110 @@ body.day-single .sched-list .sched-day-head { display: none; }
   .ct { font-size: .78rem; }
   .ct th, .ct td { padding: .4rem .45rem; }
   .ct-name { min-width: 0; }
+}
+
+/* ===== 行きたい度（★5段階）＝2人で共有する ===== */
+.want-row {
+  display: flex; align-items: center; gap: .1rem; flex-wrap: wrap;
+  margin: .3rem 0 .1rem;
+}
+.want-label {
+  font-size: .74rem; color: var(--muted); font-weight: 600;
+  margin-right: .35rem; letter-spacing: .04em;
+}
+.want-star {
+  border: none; background: none; cursor: pointer; padding: .1rem .12rem;
+  font-size: 1.16rem; line-height: 1; color: var(--line);
+  transition: transform .12s, color .12s;
+}
+.want-star:hover { transform: scale(1.18); }
+.want-star:active { transform: scale(.94); }
+.want-star.on { color: var(--gold); }
+.want-star:focus-visible { outline: 2px solid var(--ai-2); outline-offset: 1px; border-radius: 4px; }
+.want-clear {
+  border: none; background: none; cursor: pointer; color: var(--muted);
+  font-size: .82rem; padding: .1rem .3rem; margin-left: .2rem; border-radius: 6px;
+}
+.want-clear:hover { background: var(--kinari-2); color: var(--sumi); }
+
+/* ===== メモ（カードごと・2人で共有する） ===== */
+.note-box { margin: .5rem 0 .2rem; }
+.note-box > summary {
+  cursor: pointer; list-style: none; font-size: .8rem; font-weight: 600;
+  color: var(--ai); padding: .3rem .5rem; border-radius: 8px;
+  background: var(--kinari); display: inline-flex; align-items: center; gap: .3rem;
+}
+.note-box > summary::-webkit-details-marker { display: none; }
+.note-box > summary:hover { background: var(--kinari-2); }
+.note-dot { color: var(--shu); font-size: .7rem; }
+.note-input {
+  width: 100%; min-height: 4.4rem; margin-top: .4rem; padding: .5rem .6rem;
+  border: 1px solid var(--line); border-radius: 8px; background: #fff;
+  font: inherit; font-size: .85rem; line-height: 1.6; color: var(--sumi);
+  resize: vertical; box-sizing: border-box;
+}
+.note-input:focus { outline: 2px solid var(--ai-2); outline-offset: -1px; border-color: var(--ai-2); }
+
+/* 一覧表の★列と、比較表の見出しタグ */
+.ct-want { white-space: nowrap; }
+.ct-star { color: var(--gold); letter-spacing: -.06em; }
+.ct-tag {
+  display: block; font-size: .68rem; font-weight: 600; color: var(--shu);
+  margin-top: .12rem; white-space: nowrap;
+}
+
+/* ===== スケジュール行の 🎫 ===== */
+.tl-ticket {
+  display: inline-block; margin-left: .35rem; text-decoration: none;
+  font-size: .9rem; line-height: 1; vertical-align: middle;
+  padding: .1rem .18rem; border-radius: 6px; background: var(--kinari-2);
+}
+.tl-ticket:hover { background: var(--gold); }
+
+/* ===== チケット・予約タブ ===== */
+.ticket-notice { margin-bottom: 1rem; }
+.ticket-card {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: .9rem 1rem 1rem; margin: 0 0 1rem;
+  /* ★固定タブの下に潜らないように。カードと同じ理由（追補L-2） */
+  scroll-margin-top: 64px;
+}
+.ticket-card.just-jumped { animation: card-jump 1.6s ease-out; }
+@media (prefers-reduced-motion: reduce) { .ticket-card.just-jumped { animation: none; } }
+.ticket-head { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-bottom: .3rem; }
+.ticket-icon { font-size: 1.35rem; line-height: 1; }
+.ticket-title { margin: 0; font-size: 1.04rem; color: var(--ai); flex: 1 1 auto; }
+.ticket-when {
+  font-size: .74rem; font-weight: 700; color: #fff; background: var(--ai-2);
+  padding: .16rem .5rem; border-radius: 999px; white-space: nowrap;
+}
+.ticket-summary { margin: .3rem 0 .6rem; font-size: .9rem; }
+.ticket-files { margin: .7rem 0 .2rem; display: grid; gap: .6rem; }
+.ticket-file { display: flex; gap: .7rem; align-items: flex-start; }
+.ticket-shot {
+  border: 1px solid var(--line); border-radius: 10px; padding: 0; cursor: zoom-in;
+  background: var(--kinari); overflow: hidden; flex: 0 0 108px; line-height: 0;
+}
+.ticket-shot img { width: 108px; height: 108px; object-fit: cover; display: block; }
+.ticket-file-links { display: flex; flex-direction: column; gap: .35rem; align-items: flex-start; }
+.ticket-file-label { font-size: .8rem; font-weight: 600; color: var(--sumi); }
+
+/* 予約メールの原本（開いたときにブラウザ側でデコードして表示する） */
+.eml > summary {
+  cursor: pointer; list-style: none; font-size: .82rem; font-weight: 600;
+  color: var(--ai); padding: .35rem .6rem; border-radius: 8px; background: var(--kinari);
+  display: inline-block;
+}
+.eml > summary::-webkit-details-marker { display: none; }
+.eml > summary:hover { background: var(--kinari-2); }
+.eml-body {
+  white-space: pre-wrap; word-break: break-word; margin: .5rem 0;
+  padding: .7rem .8rem; background: var(--kinari); border: 1px solid var(--line);
+  border-radius: 8px; font-size: .76rem; line-height: 1.7; color: var(--sumi);
+  max-height: 26rem; overflow-y: auto;
+}
+
+@media (max-width: 520px) {
+  .ticket-shot, .ticket-shot img { flex-basis: 88px; width: 88px; height: 88px; }
+  .want-star { font-size: 1.28rem; padding: .16rem .16rem; }  /* 指で押しやすく */
 }

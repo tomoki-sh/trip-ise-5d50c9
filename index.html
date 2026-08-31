@@ -22,7 +22,7 @@
        「新しい index.html ＋ 古い app.js」の組み合わせが起き、
        タブは増えているのに中身が空、という状態になる。
        ★内容を更新して push するときは、必ずこの数字を +1 すること（3か所とも同じ値）。 -->
-  <link rel="stylesheet" href="style.css?v=44fb2d8b" />
+  <link rel="stylesheet" href="style.css?v=1260d1df" />
 </head>
 <body>
   <header class="hero">
@@ -37,8 +37,10 @@
 
   <nav class="tabs" id="tabs" aria-label="セクション切替">
     <button class="tab active" data-tab="schedule">🗓 スケジュール</button>
+    <button class="tab" data-tab="tickets">🎫 チケット</button>
     <button class="tab" data-tab="map">🗺 マップ</button>
-    <button class="tab" data-tab="feature">🦦 特集</button>
+    <button class="tab" data-tab="feature">🦦 ラッコ</button>
+    <button class="tab" data-tab="feature2">🦪 真珠体験</button>
     <button class="tab" data-tab="spots">💎 スポット</button>
     <button class="tab" data-tab="restaurants">🍽 レストラン</button>
     <button class="tab" data-tab="cafes">☕ カフェ</button>
@@ -68,10 +70,21 @@
       <div id="schedule-content"></div>
     </section>
 
+    <!-- チケット・予約（中身は app.js の DATA.tickets が描画） -->
+    <section class="panel" id="panel-tickets">
+      <h2 class="panel-title">チケット・予約</h2>
+      <p class="panel-lead">押さえてある予約を、<strong>券面の画像と予約メールの原本つき</strong>でまとめてあります。当日はここを開けば座席番号も店舗の電話番号も出てきます。スケジュールの行とスポットのカードからも 🎫 で飛べます。</p>
+      <div class="info-card warn ticket-notice">
+        <h3>⚠️ このページには予約情報が載っています</h3>
+        <p>券面と予約メールには<strong>氏名・会員番号・予約番号・券番号・認証番号</strong>が含まれます。<strong>このサイトのURLを2人以外に共有しないでください。</strong>URLを知っている人は誰でもこのページを見られます。</p>
+      </div>
+      <div id="tickets-content"></div>
+    </section>
+
     <!-- マップ -->
     <section class="panel" id="panel-map">
       <h2 class="panel-title">マップ</h2>
-      <p class="panel-lead">ピンをタップで詳細。<strong>下の「回る順番」はスケジュールの本命プランから自動で作られます</strong>（順番を変えるにはスケジュールタブで編集してください）。<strong>「日」で9/21と9/22を分けると、その日ぶんだけのナビが開けます</strong>。<strong>「エリア」</strong>では二見・鳥羽・磯部志摩を分けて見られます（二見と鳥羽は約12km、ホテルのある磯部は鳥羽から約20km南です）。<strong>「予定」の「まだ入っていない」</strong>で、本命プランに入れていない地点だけを探せます。経由地は9件が上限なので、地点を足しすぎるとナビのボタンが警告色になります。</p>
+      <p class="panel-lead">ピンをタップで詳細。<strong>下の「回る順番」はスケジュールの本命プランから自動で作られます</strong>（順番を変えるにはスケジュールタブで編集してください）。<strong>「日」で9/21と9/22を分けると、その日ぶんだけのナビが開けます</strong>。<strong>「エリア」</strong>は5区分あり、鳥羽は<strong>「駅ちかく（1km以内）」と「車で移動」に分けて</strong>あります（2日目は17時前にレンタカーを返すので、そのあと行けるのは徒歩圏だけになります）。<strong>「予定」の「まだ入っていない」</strong>で、本命プランに入れていない地点だけを探せます。経由地は9件が上限なので、地点を足しすぎるとナビのボタンが警告色になります。</p>
       <!-- ★#map-dock は「地図とそのフィルタ」をひとまとめにした引っ越し単位。
            スケジュールタブの編集モードで「地図で選ぶ」を開いたとき、そちらへ丸ごと移る。
            家はこの #map-dock-home で、置き場所を決めるのは app.js の syncMapDock() だけ。
@@ -99,17 +112,24 @@
       </div>
     </section>
 
-    <!-- 特集（読み物。中身は app.js の DATA.feature が描画） -->
+    <!-- 特集1（読み物。中身は app.js の DATA.feature が描画） -->
     <section class="panel" id="panel-feature">
-      <h2 class="panel-title">ラッコ観覧と真珠体験</h2>
-      <p class="panel-lead">この旅行の<strong>必須の2つ</strong>を、当日そのとおりに動けるところまで掘り下げた読み物です。前半は<strong>鳥羽水族館のラッコ観覧</strong>——予約も整理券も無い列方式なので、<strong>いつ列に入るか</strong>だけで満足度が決まります。後半は<strong>真珠取り出し体験の5施設比較</strong>——料金・所要時間・場所が大きく違い、どれを選ぶかで1日目の形が変わります。</p>
+      <h2 class="panel-title">ラッコ観覧 完全攻略</h2>
+      <p class="panel-lead">2日目の主目的を、当日そのとおりに動けるところまで掘り下げた読み物です。鳥羽水族館のラッコは<strong>予約も整理券も無い列方式</strong>なので、当日こちらで決められるのは<strong>「いつ列に入るか」だけ</strong>。お食事タイムと混雑の関係、13:30に表示を見てどう動くかの判断表、1分しかない観覧時間の使い方までまとめてあります。</p>
       <div id="feature-content"></div>
+    </section>
+
+    <!-- 特集2（読み物。中身は app.js の DATA.feature2 が描画） -->
+    <section class="panel" id="panel-feature2">
+      <h2 class="panel-title">真珠取り出し体験の比較</h2>
+      <p class="panel-lead">1日目の主目的です。<strong>候補は5施設あり、料金は1,100円〜3,500円、所要は20分〜60分、場所は二見から志摩半島西部まで</strong>と大きく違います。どれを選ぶかで1日目の形そのものが変わるので、<strong>なぜ「三重県真珠」を第一案にしたのか</strong>と、<strong>5施設をひと目で比べられる表</strong>を置いてあります。表の行をタップするとその施設のカードへ飛びます。</p>
+      <div id="feature2-content"></div>
     </section>
 
     <!-- スポット -->
     <section class="panel" id="panel-spots">
       <h2 class="panel-title">スポット</h2>
-      <p class="panel-lead">本命プランで行く地点に加えて、<strong>真珠体験の代替施設5か所</strong>、<strong>水族館の駐車場</strong>、<strong>返却前の給油所</strong>まで載せています。<strong>「種類」と「エリア」は掛け合わせて絞り込めます</strong>（例：種類＝真珠体験 × エリア＝二見・伊勢 → 当日でも動ける近場の代替だけが残ります）。<strong>真珠体験は施設によって料金が1,100円〜3,500円、所要が20分〜60分と大きく違います</strong>。ミキモト真珠島と伊勢神宮は<strong>今回は行かない地点</strong>ですが、判断の理由をカードに残してあります。</p>
+      <p class="panel-lead">18か所あります。本命プランで行く地点に加えて、<strong>真珠体験の代替施設5か所</strong>、<strong>水族館の駐車場3か所</strong>、<strong>返却前の給油所</strong>まで載せています。<strong>★の「行きたい度」とメモは2人で共有されます。</strong><strong>「種類」と「エリア」は掛け合わせて絞り込めます</strong>（例：種類＝真珠体験 × エリア＝二見・伊勢 → 当日でも動ける近場の代替だけが残ります）。<strong>真珠体験は施設によって料金が1,100円〜3,500円、所要が20分〜60分と大きく違います</strong>。ミキモト真珠島と伊勢神宮は<strong>今回は行かない地点</strong>ですが、判断の理由をカードに残してあります。</p>
       <div class="card-tools" id="tools-spots"></div>
       <!-- 折りたたみ式の一覧表。中身は app.js の renderCardTable() が描画 -->
       <div class="card-table" id="table-spots"></div>
@@ -119,7 +139,7 @@
     <!-- レストラン -->
     <section class="panel" id="panel-restaurants">
       <h2 class="panel-title">レストラン</h2>
-      <p class="panel-lead">1日目の二見ランチ（さらさ廣・扇屋）、2日目の早い昼食（はま﨑・あじへい磯部店）、2日目の鳥羽駅前の夕食（丸栄・一栄・漣 鳥羽店・天びん屋 本店・たまも）です。<strong>点数は食べログとGoogle（2026年8月31日確認）</strong>。<strong>⚠️ 9/21・9/22はどちらも祝日で、定休日の「振替」が起きやすい日</strong>です。とくに<strong>天びん屋 本店は月曜定休・祝日は営業して翌日に休む運用</strong>なので、<strong>9/22（火）が休業になる可能性が高い</strong>と見ておいてください。<strong>漣 鳥羽店</strong>は火曜定休ですが祝日は営業する案内で、9/22は営業見込みです。<strong>丸栄・たまもは定休日の情報が資料間で割れています。</strong>予定に入れる店は必ず電話で確認してください（番号は各カードにあります）。</p>
+      <p class="panel-lead">19店あります。<strong>「ジャンル」と「エリア」を掛け合わせて絞り込めます</strong>——とくに<strong>エリアの「鳥羽駅ちかく（1km以内）」</strong>は、2日目にレンタカーを17時前に返したあと歩いて行ける店だけに絞れるので便利です。鳥羽駅の目の前には<strong>さざえストリート（鳥羽1-8-7付近）に焼貝の店が4軒</strong>集まっていますが、<strong>18:30まで開いているのは焼貝いろはだけ</strong>で、他は16:00〜17:00に閉まります。<strong>点数は食べログとGoogle（2026年8月31日確認）</strong>。<strong>⚠️ 9/21・9/22はどちらも祝日で、定休日の「振替」が起きやすい日</strong>です。とくに<strong>天びん屋 本店は月曜定休・祝日は営業して翌日に休む運用</strong>なので<strong>9/22（火）が休業になる可能性が高く</strong>、<strong>たこ焼き わらい屋は「祝日は定休」という情報と「日曜のみ定休」という情報が食い違って</strong>います。予定に入れる店は必ず電話で確認してください（番号は各カードにあります）。<strong>★の「行きたい度」とメモは2人で共有されます。</strong></p>
       <div class="card-tools" id="tools-restaurants"></div>
       <!-- 折りたたみ式の一覧表。中身は app.js の renderCardTable() が描画 -->
       <div class="card-table" id="table-restaurants"></div>
@@ -129,7 +149,7 @@
     <!-- カフェ -->
     <section class="panel" id="panel-cafes">
       <h2 class="panel-title">カフェ</h2>
-      <p class="panel-lead">1日目の二見ランチを<strong>「待たずに、時間どおりに出たい」</strong>ときの受け皿です。<strong>maruru cafe</strong>は駐車場があって時間を管理しやすく、真珠体験の13:30に確実に間に合わせたい日の安定候補。<strong>汀の杜</strong>は夫婦岩めおと横丁の2階にある2026年開業の新しい店で、景色は魅力ですが連休の待ちが読めません。<strong>鳥羽国際ホテル ザ・ロビーラウンジ</strong>のチーズケーキは任意枠——2日目は動線が逆になるため<strong>原則省略</strong>で、どうしても食べたい場合の条件をカードに書いてあります。</p>
+      <p class="panel-lead">5店あります。1日目の二見ランチを<strong>「待たずに、時間どおりに出たい」</strong>ときの受け皿と、鳥羽駅前の甘いもの。<strong>⚠️ ただし鳥羽の2店は今回の日程と噛み合いません</strong>——<strong>MUSEA は月・火が定休で9/21も9/22も該当</strong>、<strong>Ephemere は火・水・木が定休で9/22が該当</strong>します。どちらも予約・確認の電話番号をカードに載せてあります。<strong>maruru cafe</strong>は駐車場があって時間を管理しやすく、真珠体験の13:30に確実に間に合わせたい日の安定候補。<strong>汀の杜</strong>は夫婦岩めおと横丁の2階にある2026年開業の新しい店で、景色は魅力ですが連休の待ちが読めません。<strong>鳥羽国際ホテル ザ・ロビーラウンジ</strong>のチーズケーキは任意枠——2日目は動線が逆になるため<strong>原則省略</strong>で、どうしても食べたい場合の条件をカードに書いてあります。</p>
       <div class="card-tools" id="tools-cafes"></div>
       <!-- 折りたたみ式の一覧表。中身は app.js の renderCardTable() が描画 -->
       <div class="card-table" id="table-cafes"></div>
@@ -184,18 +204,19 @@
   </div>
 
   <footer class="foot">
-    <p>伊勢志摩 2026.9.21-22 ／ 同行者と共有用（個人情報・予約番号は掲載しません）</p>
+    <p>伊勢志摩 2026.9.21-22 ／ 2人で共有用</p>
+    <p class="foot-warn">⚠️ <strong>「チケット」タブに予約情報（氏名・会員番号・予約番号・券番号）を載せています。このURLを2人以外に共有しないでください。</strong></p>
     <p class="muted">写真: Googleマップ（Place Photos）より ／ 点数: 食べログ・Googleマップより（各社・投稿者に権利。私的共有の範囲で参照用）／ 地図: © OpenStreetMap contributors ／ 天気: Open-Meteo</p>
     <details class="photo-credits">
-      <summary class="muted">Googleマップ写真の投稿者クレジット（95名）</summary>
-      <p class="muted">写真は Google マップの以下の投稿者・店舗提供によるものです（敬称略・順不同）: (有)菊池パール / 00 r / 2010 konta / Catherine Lin / Cousin Yu / F L / F R / Fujikun / Fury Mah Thailand / Grand Mercure Ise-shima Resort & Spa / HAL / John Smith / MISOPA / May Maru (Maru) / NAOKI SUGI / Nicole Ng / No one Unknown / OSK KAZ / Osamu Yokoyama / Piraya Markpoon / R U / R.B Stars / Rebecca / Sanraku Adachi / Shugo Kuwabara / Takashi / Tao Tao / Taro Tanaka / Tatsiana Starchanka / Uky Yas / Y H / Yoshiko Sato / ai ai / azuazu 7 / hms writes / kazushi shimada / kni / kyohei / m m / m n / m.marimo / maruru cafe（カフェ＆ダイニング）伊勢・夫婦岩 / motoko abe / ou s / spring spike / t s / tky k / yosuke s / yovegas / かるん / にゅうにゅ / ぴこままこぴ / ぶらりドライブおじさん / むぐたん / むむた / やま / やまと君 / りんごあめ / りーちゃん / セントラル東海 / トヨタレンタカー 鳥羽駅前店 / パールファルコ 伊勢店 / ロムスカパロ·ウル·ハヤト / 三重県真珠(株) / 上原浩徳 / 上條哲弘 / 中島晴彦 / 乙名丹次郎 / 伊藤英二 / 冬椿艶 / 創作和食 汀の杜 / 加藤保（たぁー） / 呑んだくれ / 天びん屋 本店 / 子安英司 / 山下謙二 / 山北健一 / 岩下昌司 / 平田厚子 / 彭國俊 / 扇屋 / 新大阪第一深情 / 日本料理 さらさ廣 / 松田栄二 / 真珠工房 真珠の里 / 石川太郎 / 秀幸 / 覆面調査員ロヒシアン / 鉄道王 / 高橋邦実 / 魂魄斗ブーム / 鳥羽1番街 / 鳥羽割烹 たまも | 三重県・鳥羽市 | 海鮮料理を味わえる割烹料理店。伊勢志摩の新鮮な魚介や伊勢名物を楽しめる。 / 鳥羽水族館 / 鳥羽水族館 第一駐車場</p>
+      <summary class="muted">Googleマップ写真の投稿者クレジット（137名）</summary>
+      <p class="muted">写真は Google マップの以下の投稿者・店舗提供によるものです（敬称略・順不同）: (有)菊池パール / 2010 konta / Catherine Lin / Cousin Yu / F L / F R / Fujikun / Fury Mah Thailand / Grand Mercure Ise-shima Resort & Spa / HAL / Joselito Bolanio / K Hiro / Lucky Star / M / MISOPA / MUSEAミュゼア ジェネラルストア＆カフェ / Mara Estrada / Masterkey / May Maru (Maru) / Mike D / NAOKI SUGI / Nicole Ng / No one Unknown / OSK KAZ / Osamu Yokoyama / Piraya Markpoon / R U / R.B Stars / Rebecca / SBBCFFFFSRE460 / Sanraku Adachi / Shugo Kuwabara / T N (Nari_Rider) / TAKA / Takashi / Tao Tao / Tatsiana Starchanka / Uky Yas / William / Y H / Yenhsi Lin / Yip Chan / Yoshiko Sato / Yukari Izumi / ai ai / azuazu 7 / hide miki / hms writes / kazushi shimada / ki yoshi / kima goyomi / kni / kyohei / m m / m n / m.marimo / mameco tommy / maruru cafe（カフェ＆ダイニング）伊勢・夫婦岩 / miyu sato / motoko abe / ou s / saku sakuママさん / spring spike / t s / tky k / yosuke s / yovegas / かるん / こいずみ / さくらさくら / にゅうにゅ / ぴこままこぴ / ぶらりドライブおじさん / まっつん / まめきち / むぐたん / むむた / めいしゃん / もんちゃ / やま / やまと君 / りんごあめ / りーちゃん / クロ / セントラル東海 / タイガーfb / タクシードライバー / トヨタレンタカー 鳥羽駅前店 / パールファルコ 伊勢店 / ヤマサイ / ロムスカパロ·ウル·ハヤト / 三重県真珠(株) / 上原浩徳 / 上條哲弘 / 不明さん / 中島晴彦 / 乙名丹次郎 / 伊勢S-660 / 伊藤英二 / 傅郁華（華仔） / 優馬 / 冬椿艶 / 創作和食 汀の杜 / 加藤保（たぁー） / 吉野幸子 / 呑んだくれ / 大阪屋 / 天びん屋 本店 / 子安英司 / 山下謙二 / 山北健一 / 岩井琉紀 / 岩本拓也 / 平田厚子 / 廖偉丞 / 彭國俊 / 扇屋 / 新大阪第一深情 / 日本料理 さらさ廣 / 松田栄二 / 海女小屋 ちさと / 焼肉 Itsuki〜樹〜 / 焼貝 いろは / 真珠工房 真珠の里 / 石川太郎 / 秀幸 / 覆面調査員ロヒシアン / 鉄道王 / 馳走 / 高橋邦実 / 魂魄斗ブーム / 鳥羽1番街 / 鳥羽割烹 たまも | 三重県・鳥羽市 | 海鮮料理を味わえる割烹料理店。伊勢志摩の新鮮な魚介や伊勢名物を楽しめる。 / 鳥羽水族館 / 鳥羽水族館 第一駐車場 / 鳥羽海鮮料理屋形船おきた 伊勢海老/牡蠣 / 윤아</p>
     </details>
   </footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js" defer></script>
-  <script src="app.js?v=44fb2d8b" defer></script>
+  <script src="app.js?v=1260d1df" defer></script>
 
   <!-- Firebase リアルタイム同期（スケジュール・確定状態・ルートを全員で共有）
        apiKey 等は秘密情報ではなく識別子。保護は Realtime Database のルール（匿名ログイン限定）で行う。 -->
