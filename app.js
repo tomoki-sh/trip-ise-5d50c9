@@ -1610,8 +1610,8 @@ function placeIdByName(name) {
 }
 /* 2地点の直線距離（m）。coords は Places API の location をそのまま入れてあるので、
    「駅から歩けるか」のような判断を **データから計算できる**。
-   ★エリアの割り当て（toba / tobafar）をこれで検査する。手で付けたキーが実際の距離と
-     ズレても画面には何も出ないので、テストで拾う（0-2）。 */
+   ★エリアの割り当てをこれで検査する。手で付けたキーが実際の距離とズレても
+     画面には何も出ないので、テストで拾う（0-2・追補L-1b）。 */
 function distanceM(a, b) {
   if (!a || !b) return null;
   const R = 6371000, rad = d => d * Math.PI / 180;
@@ -1620,9 +1620,9 @@ function distanceM(a, b) {
   const h = Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
 }
-/* 鳥羽駅からの距離（m）。駅そのものが DATA に無い旅行では null を返す */
-function metersFromTobaStation(p) {
-  const sta = getPlaceById(TOBA_STATION);
+/* 徒歩圏の中心からの距離（m）。中心が DATA に無い旅行では null を返す */
+function metersFromWalkCenter(p) {
+  const sta = getPlaceById(WALK_CENTER);
   return (sta && p && p.coords) ? distanceM(sta.coords, p.coords) : null;
 }
 
@@ -1774,10 +1774,15 @@ const AREA_GROUPS = [
   ["tobafar", "🚗 鳥羽（車で移動）"],
   ["shima",   "🏝 磯部・志摩"],
 ];
-/* 鳥羽エリアの境界。areaKey の "toba" / "tobafar" はこの距離で決める。
-   ★駅そのものの座標は DATA から引く（同じ事実を2か所に持たない。0-1） */
-const TOBA_WALK_M = 1000;
-const TOBA_STATION = "spot:鳥羽駅";
+/* 「徒歩圏かどうか」でエリアを割るときの境界。この旅行では鳥羽を
+   toba（駅から1km以内）と tobafar（車で移動）に分けるのに使う。
+   ★識別子は旅行に依存しない名前にする。テーマは値とラベルだけで表す（追補F-27）。
+   ★中心の座標は DATA から引く（同じ事実を2か所に持たない。0-1）。
+     この仕組みが要らない旅行では、AREA_GROUPS を距離で割らなければよいだけで、
+     ここを消す必要はない（tools/test_days.js の検査は WALK_CENTER が
+     DATA に無ければ丸ごと省略される）。 */
+const WALK_LIMIT_M = 1000;
+const WALK_CENTER = "spot:鳥羽駅";
 // 列の定義。CARD_TABS の filters から参照する
 const FILTER_GROUPS = {
   genre: { label: "ジャンル", field: "genreKey", groups: GENRE_GROUPS },
@@ -3255,7 +3260,8 @@ function areaChip(p) {
   return g ? `<span class="feature-chip area-${esc(p.areaKey)}">${esc(g[1])}</span>` : "";
 }
 // 特集タブのおすすめカードに出す meta の行（地点カードの meta から引くラベル）。
-// この旅行では「営業時間 / 運航 / 料金」が判断に直結する。無いラベルは黙って飛ばされる。
+// ★ここに書いたラベルと、地点の meta の見出しは**同じ文字列**にすること（前方一致ではない）。
+// この旅行では「営業 / 料金 / 所要」が判断に直結する。無いラベルは黙って飛ばされる。
 const FEATURE_PICK_META = ["営業", "料金", "所要"];
 /* 特集は複数本置ける。target が描き込み先、blocks がその記事の中身。
    ★1タブ1記事。タブボタンとパネルは index.html 側に置く（setupTabs は #panel-<name> で汎用に動く）。
