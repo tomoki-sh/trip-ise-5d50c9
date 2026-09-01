@@ -633,6 +633,22 @@ body.day-single .sched-list .sched-day-head { display: none; }
 .pin-spot { background: #3e9e5a; }
 .pin-restaurant { background: #e08a2b; }
 .pin-cafe { background: #8a5fb0; }
+/* ピンの下に出す点数・行きたい度のタグ（マップの「ピンに表示」列＝pinlabel）。
+   ★.pin の「子」ではなく「兄弟」。.pin は rotate(-45deg) の雫形なので、中に入れると
+     文字が斜めになり .pin span / .pin-num のように逆回転を足すことになる。兄弟なら要らない。
+   ★位置の基準は Leaflet のマーカー要素（.leaflet-marker-icon は position:absolute ＝
+     positioned なので、子の absolute はそこに解決される。こちらで基準を作る必要はない）。
+   ★white-space:nowrap は飾りではない。absolute の幅は包含ブロック（30px）に合わせて
+     縮むので、外すと「⭐4.4」が数文字ごとに折り返す。
+   ★pointer-events:none。ピンは地図から予定へドラッグする持ち手なので、
+     タグが当たり判定を奪うと掴めなくなる（追補M）。 */
+.pin-tag {
+  position: absolute; top: 32px; left: 50%; transform: translateX(-50%);
+  white-space: nowrap; pointer-events: none;
+  font-size: 10px; line-height: 1.3; padding: 1px 5px; border-radius: 999px;
+  background: rgba(255,255,255,.92); border: 1px solid var(--line);
+  box-shadow: 0 1px 3px rgba(0,0,0,.25); color: #4d473d;
+}
 
 .popup-card { width: 190px; }
 .popup-card img { width: 100%; height: 96px; object-fit: cover; border-radius: 6px; }

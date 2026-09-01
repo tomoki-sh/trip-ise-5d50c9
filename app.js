@@ -1727,6 +1727,8 @@ function setWant(id, n) {
   if (v === 0) delete wantMap[id]; else wantMap[id] = v;
   saveWant();
   refreshWantRows();
+  // ピンに★を出しているときは地図も追随させる（pinlabel列）。地図をまだ開いていなければ何もしない
+  if (typeof map !== "undefined" && map) refreshMarkers();
   // 「行きたい度順」で並べているタブだけは並び替え直す（それ以外は順番を動かさない＝押した場所が飛ばない）
   Object.keys(CARD_TABS).forEach(k => { if (cardView[k].sort === "want") renderCardTab(k); });
 }
@@ -1892,6 +1894,14 @@ const MAP_FILTER_COLUMNS = [
        他の列と同じく、0個チェックも全部チェックも「素通し」。 */
   { group: "route",  label: "予定", off: true,
     chips: () => [["route-only", "🗓 予定に入っている"], ["route-none", "🆕 まだ入っていない"]] },
+  /* ピンに重ねる情報（点数・行きたい度）。★これは絞り込みではなく「表示の重ね着」。
+     currentFilters() はこの列を読まないので、チェックしてもピンは消えないしルートも変わらない
+     （検査は tools/test_days.js §8d）。初期オフ＝既定では地図が文字で埋まらない。
+     ★チェック状態は DOM のチェックボックスだけに持つ。localStorage にも Firebase にも
+       保存しない——見る人ごとの表示状態で、同行者の画面まで変わると事故になる（追補H-9）。
+       マップの他の列と同じ持ち方なので、そのための仕掛けは何も要らない。 */
+  { group: "pinlabel", label: "ピンに表示", off: true,
+    chips: () => [["google", "⭐ Google点数"], ["tabelog", "🍴 食べログ点数"], ["want", "★ 行きたい度"]] },
 ];
 // sets[列ID] が未設定 = 未初期化（初回に全選択にする）
 // open: 一覧表の開閉。★localStorage にも Firebase にも保存しない（見る人ごとの表示状態。追補H-9）
@@ -3570,9 +3580,25 @@ function makeIcon(p, id) {
   const label = idx >= 0
     ? `${p.name}（すでに予定 ${idx + 1} 番目に入っています）`
     : `${p.name}（まだ予定に入っていません）`;
+  /* ピンの下に重ねるタグ（pinlabel列）。値の並びはチップのDOM順そのまま＝
+     「何をどの順で出すか」の出どころを MAP_FILTER_COLUMNS 1か所に保つ（0-1）。
+     点数は p.ratings から引く（一覧表の tableScore() と同じ出どころ）。
+     ★持っていない値は出さない。食べログの無いスポットや★未評価は「データの欠け」であって
+       故障ではないので、ここは黙って省くのが正しい（0-2 が禁じているのは壊れたまま動くこと）。
+     ★このタグに title を付けないこと。tools/test_days.js §17 が html の＊最初の＊
+       title を読んで「すでに予定N番目」を検査しているため、前に title が入ると意味が変わる。 */
+  const on = $$('.filter-group[data-group="pinlabel"] input:checked').map(i => i.value);
+  const r = p.ratings || {};
+  const parts = on.map(v =>
+    v === "google"  && r.google    ? `⭐${esc(r.google)}` :
+    v === "tabelog" && r.tabelog   ? `🍴${esc(r.tabelog)}` :
+    v === "want"    && getWant(id) ? "★".repeat(getWant(id)) : "").filter(Boolean);
+  /* ★.pin の「子」ではなく「兄弟」に置く。.pin は rotate(-45deg) の雫形なので、
+     中に入れると文字まで斜めになり、逆回転を足す羽目になる（.pin span / .pin-num が実例）。 */
+  const tag = parts.length ? `<div class="pin-tag">${parts.join(" ")}</div>` : "";
   return L.divIcon({
     className: "",
-    html: `<div class="pin pin-${p.type} ${ring}" data-id="${esc(id)}" title="${esc(label)}"><span>${TYPE_ICONS[p.type]}</span>${num}</div>`,
+    html: `<div class="pin pin-${p.type} ${ring}" data-id="${esc(id)}" title="${esc(label)}"><span>${TYPE_ICONS[p.type]}</span>${num}</div>${tag}`,
     iconSize: [30, 30], iconAnchor: [15, 28], popupAnchor: [0, -28]
   });
 }
@@ -3758,6 +3784,7 @@ function setupMap() {
     applyFilters();
     drawRouteLine();      // 日で絞ったら点線も追随させる
     renderRouteEditor();  // 「Googleマップでルートを開く」のURLを組み直す
+    refreshMarkers();     // 「ピンに表示」列（pinlabel）のタグを描き直す
   }));
 
   // ポップアップ内「追加」
@@ -4209,6 +4236,11 @@ function applyRemote(d) {
     if (JSON.stringify(inc) !== JSON.stringify(wantMap)) {
       wantMap = inc; localStorage.setItem(WANT_KEY, JSON.stringify({ v: WANT_VERSION, map: wantMap }));
       refreshWantRows();
+      /* ★ピンの★表示（pinlabel列）もここで描き直す。この分岐は上のとおり changed を立てない
+         ので rerenderAll() が走らず、これが無いと「同行者が付けた★が自分の地図に出ない」
+         状態になる。自分で★を付けたときは出るので気づけない（0-2）。
+         refreshMarkers() はマーカーの絵だけを作り直すので、メモ入力中のカーソルには触らない。 */
+      if (typeof map !== "undefined" && map) refreshMarkers();
     }
   }
   if (Array.isArray(d.note)) {
