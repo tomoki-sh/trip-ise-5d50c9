@@ -649,6 +649,18 @@ body.day-single .sched-list .sched-day-head { display: none; }
   background: rgba(255,255,255,.92); border: 1px solid var(--line);
   box-shadow: 0 1px 3px rgba(0,0,0,.25); color: #4d473d;
 }
+/* 地点名だけ幅を制限して「…」で省略する。
+   ★制限を .pin-tag 全体にかけないこと——名前の長い地点で後ろの点数・★まで切り落とされる
+     （最長は21文字の「グランドメルキュール伊勢志摩リゾート＆スパ」で、⭐3.6 を持っている）。
+     長さが決まっていないのは名前だけなので、制限もここに閉じ込める。
+     ★この設計は CSS では検査できないので、tools/test_days.js §8d の
+       「名前が長い地点でも点数が残る」が唯一の砦になっている。
+   ★vertical-align は要る。overflow:hidden の inline-block はベースラインが下端に変わるため、
+     付けないと隣の「⭐4.4」と行がずれて、ピルが縦に伸びる。 */
+.pin-name {
+  display: inline-block; max-width: 120px;
+  overflow: hidden; text-overflow: ellipsis; vertical-align: bottom;
+}
 
 .popup-card { width: 190px; }
 .popup-card img { width: 100%; height: 96px; object-fit: cover; border-radius: 6px; }

@@ -1901,7 +1901,7 @@ const MAP_FILTER_COLUMNS = [
        保存しない——見る人ごとの表示状態で、同行者の画面まで変わると事故になる（追補H-9）。
        マップの他の列と同じ持ち方なので、そのための仕掛けは何も要らない。 */
   { group: "pinlabel", label: "ピンに表示", off: true,
-    chips: () => [["google", "⭐ Google点数"], ["tabelog", "🍴 食べログ点数"], ["want", "★ 行きたい度"]] },
+    chips: () => [["name", "🏷 地点名"], ["google", "⭐ Google点数"], ["tabelog", "🍴 食べログ点数"], ["want", "★ 行きたい度"]] },
 ];
 // sets[列ID] が未設定 = 未初期化（初回に全選択にする）
 // open: 一覧表の開閉。★localStorage にも Firebase にも保存しない（見る人ごとの表示状態。追補H-9）
@@ -3586,10 +3586,14 @@ function makeIcon(p, id) {
      ★持っていない値は出さない。食べログの無いスポットや★未評価は「データの欠け」であって
        故障ではないので、ここは黙って省くのが正しい（0-2 が禁じているのは壊れたまま動くこと）。
      ★このタグに title を付けないこと。tools/test_days.js §17 が html の＊最初の＊
-       title を読んで「すでに予定N番目」を検査しているため、前に title が入ると意味が変わる。 */
+       title を読んで「すでに予定N番目」を検査しているため、前に title が入ると意味が変わる。
+     ★地点名だけ <span class="pin-name"> で包む。長さが青天井なのはこの値だけなので、
+       幅の制限をそこに閉じ込める。タグ全体を切ると、名前の長い地点で後ろの点数まで
+       消える（「グランドメルキュール伊勢志摩リゾート＆スパ」は21文字＋⭐3.6）。 */
   const on = $$('.filter-group[data-group="pinlabel"] input:checked').map(i => i.value);
   const r = p.ratings || {};
   const parts = on.map(v =>
+    v === "name"                   ? `<span class="pin-name">${esc(p.name)}</span>` :
     v === "google"  && r.google    ? `⭐${esc(r.google)}` :
     v === "tabelog" && r.tabelog   ? `🍴${esc(r.tabelog)}` :
     v === "want"    && getWant(id) ? "★".repeat(getWant(id)) : "").filter(Boolean);
