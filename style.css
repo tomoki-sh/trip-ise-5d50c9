@@ -435,6 +435,47 @@ body.day-single .sched-list .sched-day-head { display: none; }
   .sched-cols.with-map { grid-template-columns: 1.35fr 1.15fr .75fr; }
 }
 
+/* 列の間の16pxは操作用のトラック。候補が下段へ回る場合も行・列を明示する。 */
+.sched-editor [hidden] { display: none !important; }
+.sched-cols > * { min-width: 0; }
+#sched-timeline-col { container-type: inline-size; container-name: sched-timeline; }
+/* 狭い列では、日付の補足を次の行へ送って横スクロールを防ぐ。 */
+@container sched-timeline (max-width: 320px) {
+  .sched-day-head { flex-wrap: wrap; row-gap: .2rem; }
+  .sched-day-sub { order: 1; flex: 1 0 100%; min-width: 0; overflow-wrap: anywhere; }
+}
+.sched-editor[data-layout] .sched-cols { column-gap: 0; row-gap: 1rem; }
+.sched-editor[data-layout="phone"] .sched-cols { grid-template-columns: minmax(0, 1fr); }
+.sched-editor[data-layout="three"] #sched-map-slot,
+.sched-editor[data-layout="mapSchedule"] #sched-map-slot { grid-area: 1 / 1; }
+.sched-editor[data-layout="three"] #sched-timeline-col,
+.sched-editor[data-layout="mapSchedule"] #sched-timeline-col { grid-area: 1 / 3; }
+.sched-editor[data-layout="three"] #sched-candidates-col { grid-area: 1 / 5; }
+.sched-editor[data-layout="mapSchedule"] #sched-candidates-col { grid-area: 2 / 1 / auto / 4; }
+.sched-editor[data-layout="scheduleCandidates"] #sched-timeline-col { grid-area: 1 / 1; }
+.sched-editor[data-layout="scheduleCandidates"] #sched-candidates-col { grid-area: 1 / 3; }
+.sched-splitter { grid-area: 1 / 2; align-self: stretch; position: relative; min-height: 80px;
+  cursor: col-resize; touch-action: none; user-select: none; border-radius: 6px; }
+.sched-editor[data-layout="three"] .sched-splitter[data-pane="schedule"] { grid-column: 4; }
+.sched-splitter::before { content: ""; position: absolute; top: 0; bottom: 0; left: 7px; width: 2px; background: var(--line); }
+.sched-splitter::after { content: "⋮"; position: absolute; top: 36px; left: 0; width: 16px; text-align: center;
+  color: var(--ai); background: var(--card); font-size: 22px; line-height: 36px; border-radius: 6px; }
+.sched-splitter:hover, .sched-splitter:focus-visible { background: var(--kinari-2); outline: 2px solid var(--cyan); outline-offset: -2px; }
+body.sched-resizing, body.sched-resizing * { cursor: col-resize !important; user-select: none !important; -webkit-user-select: none !important; }
+.sched-layout-bar { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem .7rem; margin-bottom: .7rem; }
+.sched-layout-bar .sched-hint { margin: 0; }
+.sched-candidates-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .4rem; margin-bottom: .5rem; }
+.sched-candidates-head .sched-col-h { margin: 0; }
+#sched-candidates-body > .sched-hint { margin: 0 0 .5rem; }
+.sched-editor[data-layout="phone"] .sched-layout-bar { display: none; }
+.sched-editor[data-layout="phone"] #sched-candidates-col { border-top: 1px solid var(--line); padding-top: .7rem; }
+.sched-editor[data-layout="phone"] .sched-list { max-height: none; overflow: visible; }
+.sched-editor[data-layout="phone"] #sched-map-toggle,
+.sched-editor[data-layout="phone"] #sched-map-size,
+.sched-editor[data-layout="phone"] #sched-candidates-toggle { min-height: 44px; }
+.sched-editor[data-layout="phone"] .cand-add { width: 44px; height: 44px; }
+.sched-editor[data-layout="phone"] .sched-cand-item { cursor: default; }
+
 /* ===== カード ===== */
 .cards { display: grid; gap: 1.1rem; grid-template-columns: 1fr; }
 .card {
@@ -551,6 +592,9 @@ body.day-single .sched-list .sched-day-head { display: none; }
 #map-dock.in-editor .map-filters { max-height: 168px; overflow-y: auto; margin-bottom: .5rem; font-size: .95em; }
 /* 狭い画面では地図が予定一覧の上に積まれるので、低めにして一覧を押し下げすぎない */
 @media (max-width: 759px) { #map-dock.in-editor #map { height: 300px; } }
+.sched-editor[data-layout="phone"] #map-dock.in-editor #map { height: 300px; }
+.sched-editor[data-layout="phone"].map-large #map-dock.in-editor #map { height: 480px; }
+.sched-editor[data-layout="phone"] #map-dock [data-add-sched] { min-width: 44px; min-height: 44px; }
 .filter-label { font-size: .78rem; font-weight: 700; color: var(--ai); }
 .chip {
   display: inline-flex; align-items: center; gap: .25rem; font-size: .8rem;

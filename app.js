@@ -1061,6 +1061,222 @@ let schedEditing = null;
    ★schedDayView と同じく端末ローカル。保存も同期もしない（追補H-9）。 */
 let schedMapOpen = false;
 
+// 列幅だけを旅行・ブラウザごとに保存する。旅程の保存・Firebase同期とは独立。
+const SCHED_LAYOUT_KEY = "ise-trip-editor-layout";
+const SCHED_LAYOUTS = {
+  three: { panes: ["map", "schedule", "candidates"], min: [280, 260, 180], ratio: [1.35, 1.15, .75] },
+  mapSchedule: { panes: ["map", "schedule"], min: [280, 260], ratio: [1, 1] },
+  scheduleCandidates: { panes: ["schedule", "candidates"], min: [260, 180], ratio: [1.5, 1] }
+};
+const SCHED_SPLITTER_WIDTH = 16;
+let schedLayoutPrefs = loadSchedLayout();
+let schedCandidatesOpen = false, schedMapLarge = false;
+let schedLayoutController = null;
+
+function loadSchedLayout() {
+  const result = {};
+  try {
+    const raw = JSON.parse(localStorage.getItem(SCHED_LAYOUT_KEY));
+    if (raw?.v !== 1) return result;
+    for (const [mode, spec] of Object.entries(SCHED_LAYOUTS)) {
+      const values = raw.ratios?.[mode];
+      if (Array.isArray(values) && values.length === spec.min.length &&
+          values.every(x => Number.isFinite(x) && x > 0) && Number.isFinite(values.reduce((a, b) => a + b, 0))) {
+        const sum = values.reduce((a, b) => a + b, 0);
+        result[mode] = values.map(x => x / sum);
+      }
+    }
+  } catch (e) { /* 保存領域が使えなくても、その場での調整はできる */ }
+  return result;
+}
+function saveSchedLayout() {
+  try { localStorage.setItem(SCHED_LAYOUT_KEY, JSON.stringify({ v: 1, ratios: schedLayoutPrefs })); } catch (e) {}
+}
+// 最小幅に達した列を固定し、残った幅を残りの比率で配る。保存値は変更しない。
+function fitSchedWidths(total, ratio, min) {
+  const widths = min.map(() => 0), pending = new Set(min.map((_, i) => i));
+  let remaining = total;
+  while (pending.size) {
+    const sum = [...pending].reduce((s, i) => s + ratio[i], 0);
+    const fixed = [...pending].filter(i => remaining * ratio[i] / sum < min[i]);
+    if (!fixed.length) {
+      pending.forEach(i => { widths[i] = remaining * ratio[i] / sum; });
+      break;
+    }
+    fixed.forEach(i => { widths[i] = min[i]; remaining -= min[i]; pending.delete(i); });
+  }
+  return widths;
+}
+function moveSchedBoundary(widths, min, index, delta) {
+  const next = widths.slice(), pair = widths[index] + widths[index + 1];
+  next[index] = Math.max(min[index], Math.min(pair - min[index + 1], widths[index] + delta));
+  next[index + 1] = pair - next[index];
+  return next;
+}
+function schedViewportMode() {
+  if (window.innerWidth < 760) return "phone";
+  return schedMapOpen ? (window.innerWidth >= 1180 ? "three" : "mapSchedule") : "scheduleCandidates";
+}
+function applySchedWidths(c, widths) {
+  c.widths = widths;
+  c.grid.style.gridTemplateColumns = widths.map(x => `${x}px`).join(` ${SCHED_SPLITTER_WIDTH}px `);
+  const spec = SCHED_LAYOUTS[c.mode];
+  $$(".sched-splitter", c.grid).forEach(handle => {
+    const index = spec.panes.indexOf(handle.dataset.pane);
+    const visible = index >= 0 && index < widths.length - 1;
+    handle.hidden = !visible;
+    if (!visible) return;
+    const pair = widths[index] + widths[index + 1];
+    handle.setAttribute("aria-valuemin", Math.round(spec.min[index]));
+    handle.setAttribute("aria-valuemax", Math.floor(pair - spec.min[index + 1]));
+    handle.setAttribute("aria-valuenow", Math.round(widths[index]));
+    handle.setAttribute("aria-valuetext", `${Math.round(widths[index])}ピクセル`);
+  });
+}
+function refreshSchedLayout() {
+  const c = schedLayoutController; if (!c) return;
+  let mode = schedViewportMode();
+  const available = c.grid.getBoundingClientRect().width;
+  // 拡大表示等で実際の編集領域が足りない場合も横スクロールを作らない。
+  const fits = key => available >= SCHED_LAYOUTS[key].min.reduce((a, b) => a + b, 0) +
+    SCHED_SPLITTER_WIDTH * (SCHED_LAYOUTS[key].min.length - 1);
+  if (available > 0) {
+    if (mode === "three" && !fits(mode)) mode = "mapSchedule";
+    if (mode !== "phone" && !fits(mode)) mode = "phone";
+  }
+  if (c.mode !== mode || c.available !== available) endSchedResize(false);
+  c.mode = mode; c.available = available;
+  c.root.dataset.layout = mode;
+  const phone = mode === "phone";
+  $("#sched-layout-reset").hidden = phone;
+  $("#sched-layout-help").hidden = phone;
+  $("#sched-candidates-toggle").hidden = !phone;
+  $("#sched-candidates-body").hidden = phone && !schedCandidatesOpen;
+  $("#sched-candidates-toggle").setAttribute("aria-expanded", String(schedCandidatesOpen));
+  $("#sched-candidates-toggle").textContent = schedCandidatesOpen ? "候補を閉じる" : "候補を開く";
+  $("#sched-map-size").hidden = !phone || !schedMapOpen;
+  $("#sched-map-size").textContent = schedMapLarge ? "標準サイズ" : "地図を大きく";
+  $("#sched-map-size").setAttribute("aria-pressed", String(schedMapLarge));
+  c.root.classList.toggle("map-large", schedMapLarge);
+  if (phone) {
+    c.grid.style.removeProperty("grid-template-columns");
+    $$(".sched-splitter", c.grid).forEach(el => { el.hidden = true; });
+    c.widths = [];
+  } else if (available > 0) {
+    const spec = SCHED_LAYOUTS[mode];
+    const total = available - SCHED_SPLITTER_WIDTH * (spec.min.length - 1);
+    if (!c.drag) applySchedWidths(c, fitSchedWidths(total, schedLayoutPrefs[mode] || spec.ratio, spec.min));
+  }
+}
+function commitSchedWidths(c) {
+  const sum = c.widths.reduce((a, b) => a + b, 0);
+  if (!(sum > 0)) return;
+  schedLayoutPrefs[c.mode] = c.widths.map(x => x / sum);
+  saveSchedLayout();
+}
+function endSchedResize(commit = false) {
+  const c = schedLayoutController, drag = c?.drag; if (!drag) return;
+  c.drag = null;
+  window.removeEventListener("pointermove", drag.move);
+  window.removeEventListener("pointerup", drag.up);
+  window.removeEventListener("pointercancel", drag.cancel);
+  window.removeEventListener("blur", drag.cancel);
+  window.removeEventListener("keydown", drag.key);
+  drag.handle.removeEventListener("lostpointercapture", drag.cancel);
+  if (drag.handle.hasPointerCapture?.(drag.id)) drag.handle.releasePointerCapture(drag.id);
+  document.body.classList.remove("sched-resizing");
+  if (commit) commitSchedWidths(c);
+  else applySchedWidths(c, drag.widths);
+}
+function startSchedResize(event) {
+  const c = schedLayoutController;
+  if (!c || c.mode === "phone" || event.button !== 0 || event.isPrimary === false || !canEditShared()) return;
+  const handle = event.currentTarget, spec = SCHED_LAYOUTS[c.mode];
+  const index = spec.panes.indexOf(handle.dataset.pane);
+  if (index < 0 || index >= c.widths.length - 1) return;
+  endSchedResize(false);
+  endPinDrag();
+  cancelMapPinch();
+  event.preventDefault(); event.stopPropagation();
+  const drag = { handle, id: event.pointerId, x: event.clientX, widths: c.widths.slice() };
+  drag.move = e => {
+    if (e.pointerId !== drag.id) return;
+    e.preventDefault();
+    applySchedWidths(c, moveSchedBoundary(drag.widths, spec.min, index, e.clientX - drag.x));
+  };
+  drag.up = e => { if (e.pointerId === drag.id) { drag.move(e); endSchedResize(true); } };
+  drag.cancel = e => { if (e.pointerId === undefined || e.pointerId === drag.id) endSchedResize(false); };
+  drag.key = e => { if (e.key === "Escape") { e.preventDefault(); endSchedResize(false); } };
+  c.drag = drag;
+  document.body.classList.add("sched-resizing");
+  window.addEventListener("pointermove", drag.move, { passive: false });
+  window.addEventListener("pointerup", drag.up);
+  window.addEventListener("pointercancel", drag.cancel);
+  window.addEventListener("blur", drag.cancel);
+  window.addEventListener("keydown", drag.key);
+  handle.addEventListener("lostpointercapture", drag.cancel);
+  handle.setPointerCapture?.(drag.id);
+}
+function resizeSchedByKey(event) {
+  const c = schedLayoutController;
+  if (!c || c.mode === "phone" || !canEditShared()) return;
+  const delta = { ArrowLeft: -16, ArrowRight: 16, Home: -Infinity, End: Infinity }[event.key];
+  if (delta === undefined) return;
+  event.preventDefault(); event.stopPropagation();
+  endSchedResize(false);
+  const spec = SCHED_LAYOUTS[c.mode], index = spec.panes.indexOf(event.currentTarget.dataset.pane);
+  if (index < 0 || index >= c.widths.length - 1) return;
+  applySchedWidths(c, moveSchedBoundary(c.widths, spec.min, index, delta));
+  commitSchedWidths(c);
+}
+function disposeSchedLayout() {
+  const c = schedLayoutController; if (!c) return;
+  endSchedResize(false);
+  c.observer?.disconnect();
+  window.removeEventListener("resize", c.resize);
+  cancelAnimationFrame(c.raf);
+  schedLayoutController = null;
+}
+function setupSchedLayout() {
+  const root = $(".sched-editor"), grid = $(".sched-cols"); if (!root || !grid) return;
+  const c = { root, grid, mode: "phone", widths: [], raf: 0, drag: null, mapWidth: 0, mapHeight: 0 };
+  schedLayoutController = c;
+  c.resize = () => {
+    if (c.raf) return;
+    c.raf = requestAnimationFrame(() => {
+      c.raf = 0;
+      refreshSchedLayout();
+      const el = $("#map"), width = el?.clientWidth || 0, height = el?.clientHeight || 0;
+      if (map && width > 0 && height > 0 && (width !== c.mapWidth || height !== c.mapHeight)) {
+        // invalidateSize の中心補正を使う。fitBounds は呼ばず、見ていた中心・ズームを保つ。
+        map.invalidateSize({ animate: false, debounceMoveend: true });
+      }
+      c.mapWidth = width; c.mapHeight = height;
+    });
+  };
+  if (typeof ResizeObserver === "function") {
+    c.observer = new ResizeObserver(c.resize);
+    c.observer.observe(grid);
+    if ($("#map")) c.observer.observe($("#map"));
+  }
+  window.addEventListener("resize", c.resize);
+  $$(".sched-splitter", grid).forEach(handle => {
+    handle.addEventListener("pointerdown", startSchedResize);
+    handle.addEventListener("keydown", resizeSchedByKey);
+  });
+  $("#sched-layout-reset").addEventListener("click", () => {
+    endSchedResize(false);
+    delete schedLayoutPrefs[c.mode]; saveSchedLayout(); refreshSchedLayout();
+  });
+  $("#sched-candidates-toggle").addEventListener("click", () => {
+    schedCandidatesOpen = !schedCandidatesOpen; refreshSchedLayout();
+  });
+  $("#sched-map-size").addEventListener("click", () => {
+    schedMapLarge = !schedMapLarge; refreshSchedLayout(); c.resize();
+  });
+  refreshSchedLayout(); c.resize();
+}
+
 // 候補名から予定行を作る。地点カードに一致すれば ref を付け、確定状態を引き継ぐ。
 // day は「いま見ているサブタブの日」。全体タブから足したときは初日に入る。
 function schedItemFromName(name, day) {
@@ -1163,6 +1379,7 @@ function closeSchedEditor() {
 }
 function renderSchedEditorSection() {
   const host = $("#sched-editor-host"); if (!host) return;
+  disposeSchedLayout();
   /* ★innerHTML を書く前に、借りている地図を必ず家へ返す。
      下の2つの分岐はどちらも host.innerHTML を書き換えるので、分岐より前に置くこと。
      ここを飛ばすと Leaflet のコンテナごと捨てられ、地図が二度と戻らない。
@@ -1192,11 +1409,17 @@ function renderSchedEditorSection() {
            ・広い画面で予定一覧の真横に来るので、ドラッグの距離が短く、両方が同時に見える -->
       <div class="sched-map-bar">
         <button class="btn-ghost sched-map-toggle" id="sched-map-toggle" aria-expanded="${schedMapOpen ? "true" : "false"}" aria-controls="sched-map-slot">${schedMapOpen ? "🗺 地図を閉じる" : "🗺 地図で選ぶ"}</button>
+        <button class="btn-ghost" id="sched-map-size" aria-controls="map" hidden>地図を大きく</button>
         <span class="muted sched-map-hint">${schedMapOpen ? "ピンをつまんで予定へドラッグ（パソコン）。<strong>行と行の間に落とすと新しい予定が入り、行の真ん中に落とすとその予定にその地点が紐づきます</strong>。スマホではピンをタップして「＋ スケジュールに追加」。" : "地図で位置関係を見ながら予定に足せます"}</span>
       </div>
+      <div class="sched-layout-bar">
+        <span id="sched-layout-help" class="muted sched-hint">列の境界を左右にドラッグして幅を調整できます（このブラウザに保存）。</span>
+        <button class="btn-ghost" id="sched-layout-reset">列幅を標準に戻す</button>
+      </div>
       <div class="sched-cols${schedMapOpen ? " with-map" : ""}">
-        <div id="sched-map-slot"${schedMapOpen ? "" : " hidden"}></div>
-        <div class="sched-col">
+        <div id="sched-map-slot" aria-label="地図"${schedMapOpen ? "" : " hidden"}></div>
+        <div class="sched-splitter" data-pane="map" role="separator" tabindex="0" aria-orientation="vertical" aria-label="地図の列幅" aria-controls="sched-map-slot" title="左右にドラッグ、または左右キーで地図の幅を調整" hidden></div>
+        <div class="sched-col" id="sched-timeline-col">
           <h4 class="sched-col-h">タイムスケジュール <span class="muted">ドラッグ並び替え・時刻入力・確定切替</span></h4>
           <ol class="sched-list" id="sched-list"></ol>
           <div class="sched-toolbar">
@@ -1208,8 +1431,14 @@ function renderSchedEditorSection() {
           </div>
           <p class="sched-hint muted">行はドラッグで並べ替えられます。<strong>「おすすめ順に戻す」で本命プランの初期状態に戻せます。</strong>時刻・本文の変更は入力した時点で同行者にも反映されます（保存ボタンはありません）。</p>
         </div>
-        <div class="sched-col">
-          <h4 class="sched-col-h">候補リスト <span class="muted">ドラッグ or ⊕ で左へ追加</span></h4>
+        <div class="sched-splitter" data-pane="schedule" role="separator" tabindex="0" aria-orientation="vertical" aria-label="タイムスケジュールの列幅" aria-controls="sched-timeline-col" title="左右にドラッグ、または左右キーでタイムスケジュールの幅を調整" hidden></div>
+        <div class="sched-col" id="sched-candidates-col">
+          <div class="sched-candidates-head">
+            <h4 class="sched-col-h">候補リスト <span class="muted" id="sched-candidates-count"></span></h4>
+            <button class="btn-ghost" id="sched-candidates-toggle" aria-expanded="false" aria-controls="sched-candidates-body" hidden>候補を開く</button>
+          </div>
+          <div id="sched-candidates-body">
+          <p class="sched-hint muted">⊕で予定に追加できます。パソコンではドラッグも使えます。</p>
           <div class="sched-cand-tabs" id="sched-cand-tabs">
             <button class="sched-cand-tab active" data-filter="all">すべて</button>
             <button class="sched-cand-tab" data-filter="spots">🌿 スポット</button>
@@ -1217,6 +1446,7 @@ function renderSchedEditorSection() {
             <button class="sched-cand-tab" data-filter="cafes">☕ カフェ</button>
           </div>
           <ul class="sched-cand-list" id="sched-candidates"></ul>
+          </div>
         </div>
       </div>
       <div class="sched-edit-foot">
@@ -1229,6 +1459,7 @@ function renderSchedEditorSection() {
   renderSchedCandidates();
   setupSchedCandTabs();
   setupSchedMapToggle();
+  setupSchedLayout();
   populateSchedAddSelect();
   schedSortInit = false;       // 新しい DOM に対して張り直す
   setupScheduleSortable();
@@ -1251,13 +1482,23 @@ function renderSchedEditorSection() {
   syncMapDock();
 }
 
-/* 「地図で選ぶ」の開閉。★開閉そのものはこの関数が持たず、schedMapOpen を変えて
-   syncMapDock() に判断させる。ボタンの見た目は再描画で作り直す（状態は1か所）。 */
+/* 開閉では入力欄や候補リストを作り直さない。地図の置き場所は syncMapDock() が決める。 */
 function setupSchedMapToggle() {
   const btn = $("#sched-map-toggle"); if (!btn) return;
   btn.addEventListener("click", () => {
+    endSchedResize(false);
     schedMapOpen = !schedMapOpen;
-    renderSchedEditorSection();
+    $(".sched-editor").classList.toggle("with-map", schedMapOpen);
+    $(".sched-cols").classList.toggle("with-map", schedMapOpen);
+    $("#sched-map-slot").hidden = !schedMapOpen;
+    btn.setAttribute("aria-expanded", String(schedMapOpen));
+    btn.textContent = schedMapOpen ? "🗺 地図を閉じる" : "🗺 地図で選ぶ";
+    $(".sched-map-hint").textContent = schedMapOpen
+      ? "パソコンではピンを予定へドラッグ。行の間で新規追加、行の中央で地点を紐づけます。スマホではピンをタップして「＋ スケジュールに追加」。"
+      : "地図で位置関係を見ながら予定に足せます";
+    refreshSchedLayout();
+    syncMapDock();
+    schedLayoutController?.resize();
     if (schedMapOpen) {
       const slot = $("#sched-map-slot");
       if (slot && slot.scrollIntoView) slot.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -1492,10 +1733,12 @@ function renderSchedCandidates(filter = "all") {
       `<li class="sched-cand-item" data-name="${esc(p.name)}">
         <span class="type-emoji">${TYPE_ICONS[emoji]}</span>
         <span class="nm">${esc(p.name)}</span>
-        <button class="cand-add" data-name="${esc(p.name)}" aria-label="左に追加">⊕</button>
+        <button class="cand-add" data-name="${esc(p.name)}" aria-label="${esc(p.name)}を予定に追加">⊕</button>
       </li>`).join("");
     return head + items;
   }).join("");
+  const count = $("#sched-candidates-count");
+  if (count) count.textContent = `（${shown.reduce((sum, [key]) => sum + DATA[key].length, 0)}件）`;
   $$("#sched-candidates .cand-add").forEach(b => b.addEventListener("click", () => {
     insertSchedItem(schedItemFromName(b.dataset.name));
   }));
@@ -1956,6 +2199,7 @@ function routeIndex(id) { return routeIds.indexOf(id); }
    地図（Leaflet）
    ========================================================================= */
 let map, markerLayer, routeLine;
+let cancelMapPinch = () => {};
 const markers = {}; // id -> marker
 
 /* ★初期表示の範囲は「見えるようになってから」当てる。
@@ -2172,7 +2416,8 @@ function scrollSchedRowIntoView(id) {
   setTimeout(() => row.classList.remove("is-flash"), 1200);
 }
 function setupMap() {
-  map = L.map("map", { scrollWheelZoom: false });
+  map = L.map("map", { scrollWheelZoom: false, zoomSnap: .25 });
+  cancelMapPinch = installMapTrackpadZoom(map, $("#map"));
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 18, attribution: '© OpenStreetMap contributors'
   }).addTo(map);
@@ -2201,15 +2446,102 @@ function setupMap() {
   }));
 
   // ポップアップ内「追加」
-  map.on("popupopen", (e) => {
-    const btn = e.popup._contentNode.querySelector("[data-add-sched]");
-    if (btn) btn.addEventListener("click", () => { map.closePopup(); addPlaceToSchedule(btn.dataset.addSched); });
-    // 編集中に地図を開いているときは、その地点の予定行まで一覧を送る（逆方向の道しるべ）
-    if (btn) scrollSchedRowIntoView(btn.dataset.addSched);
-  });
+  map.on("popupopen", onMapPopupOpen);
 
   // ピンをスケジュールへドラッグする配線（パソコンのみ。中で判定している）
   setupPinDrag();
+}
+
+/* Macのピンチ: Chrome等のctrl+wheelと、SafariのGestureEventを受ける。
+   通常のwheelはページへ通し、直接画面を触るピンチはLeafletのtouchZoomに任せる。
+   地図は1個なのでイベントも1組だけ。ドック移動時は途中のズームだけを取り消す。 */
+function installMapTrackpadZoom(m, el) {
+  const events = new AbortController();
+  let state = null, frame = 0, timer = 0, touches = 0, gestureUntil = 0;
+  const clamp = zoom => Math.max(m.getMinZoom(), Math.min(m.getMaxZoom(), zoom));
+  const busy = () => !!pinDrag || !!schedLayoutController?.drag;
+  const visible = () => el.clientWidth > 0 && el.clientHeight > 0 && !document.hidden;
+  const accepts = e => e.cancelable && !touches && visible() &&
+    !e.target.closest?.(".leaflet-control, .leaflet-popup");
+  const cancel = () => {
+    cancelAnimationFrame(frame); clearTimeout(timer);
+    state = null; frame = 0; timer = 0; gestureUntil = 0;
+  };
+  const flush = () => {
+    cancelAnimationFrame(frame); frame = 0;
+    if (!state) return;
+    if (!visible() || busy()) { cancel(); return; }
+    // setZoomAroundが中心を計算する前に丸める。同じ倍率の微小入力で地図が流れないようにする。
+    const snap = m.options.zoomSnap;
+    const zoom = clamp(snap ? Math.round(state.zoom / snap) * snap : state.zoom);
+    if (zoom !== m.getZoom()) m.setZoomAround(state.point, zoom, { animate: false });
+  };
+  const queue = () => { if (!frame) frame = requestAnimationFrame(flush); };
+  const point = e => {
+    const rect = el.getBoundingClientRect();
+    return Number.isFinite(e.clientX) && Number.isFinite(e.clientY) &&
+      e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom
+      ? m.mouseEventToContainerPoint(e) : m.getSize().divideBy(2);
+  };
+  const on = (target, type, listener, options = {}) =>
+    target.addEventListener(type, listener, { ...options, signal: events.signal });
+  on(el, "wheel", e => {
+    if (!e.ctrlKey || !Number.isFinite(e.deltaY) || !accepts(e)) return;
+    e.preventDefault();
+    // Safariが両形式を通知した場合の二重ズームを防ぐ。
+    if (busy() || state?.kind === "gesture" || performance.now() < gestureUntil) return;
+    if (state?.kind !== "wheel") {
+      m.stop(); state = { kind: "wheel", zoom: m.getZoom(), point: point(e) };
+    }
+    const pixels = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1);
+    state.zoom = clamp(state.zoom - pixels / (100 * Math.LN2));
+    state.point = point(e);
+    queue(); clearTimeout(timer);
+    timer = setTimeout(() => { flush(); cancel(); }, 160);
+  }, { passive: false });
+  on(el, "gesturestart", e => {
+    if (!accepts(e) || !window.matchMedia?.("(hover: hover) and (pointer: fine)").matches) return;
+    e.preventDefault();
+    if (busy()) return;
+    cancel(); m.stop();
+    state = { kind: "gesture", startZoom: m.getZoom(), zoom: m.getZoom(), point: point(e) };
+  }, { passive: false });
+  const changeGesture = e => {
+    if (state?.kind !== "gesture") return;
+    if (e.cancelable) e.preventDefault();
+    if (!Number.isFinite(e.scale) || e.scale <= 0) return;
+    state.zoom = clamp(state.startZoom + Math.log2(e.scale));
+    queue();
+  };
+  on(window, "gesturechange", changeGesture, { passive: false });
+  on(window, "gestureend", e => {
+    if (state?.kind !== "gesture") return;
+    changeGesture(e); flush(); cancel();
+    gestureUntil = performance.now() + 120;
+  }, { passive: false });
+  on(el, "touchstart", e => { touches = e.touches.length; cancel(); }, { passive: true, capture: true });
+  for (const type of ["touchend", "touchcancel"]) {
+    on(el, type, e => { touches = e.touches.length; }, { passive: true, capture: true });
+  }
+  on(el, "pointerdown", cancel, { capture: true });
+  on(el, "keydown", cancel);
+  on(window, "blur", () => { touches = 0; cancel(); });
+  on(window, "resize", cancel);
+  on(document, "visibilitychange", () => { touches = 0; cancel(); });
+  m.on("unload", () => { cancel(); events.abort(); });
+  return cancel;
+}
+
+function onMapPopupOpen(e) {
+  const btn = e.popup._contentNode.querySelector("[data-add-sched]");
+  if (!btn) return;
+  // ポップアップを開き直しても多重登録しない。document のカード用委任には渡さない。
+  btn.onclick = event => {
+    event.stopPropagation();
+    map.closePopup();
+    addPlaceToSchedule(btn.dataset.addSched);
+  };
+  scrollSchedRowIntoView(btn.dataset.addSched);
 }
 
 /* 地図の遅延初期化はここだけ。マップタブと、編集モードの「地図で選ぶ」の両方から呼ぶ。
@@ -2220,10 +2552,10 @@ function ensureMap() {
   setupMap();
 }
 /* 地図を見せたあとに必ず呼ぶ。非表示の div の中でサイズが 0 のままになっているのを直す */
-function revealMap() {
+function revealMap(fit = true) {
   if (!map) return;
   map.invalidateSize();
-  fitMapToPlaces();
+  if (fit) fitMapToPlaces();
 }
 
 /* ===== 地図の間借り（編集モードへの引っ越し） =====
@@ -2238,6 +2570,8 @@ function revealMap() {
      「編集セクションを作り直す前に地図を返すのを忘れないこと」という
      人間向けの手順を作らない（0-3）。判断者は syncMapDock() ただ一つ。 */
 function undockMap() {
+  cancelMapPinch();
+  endSchedResize(false);
   endPinDrag();   // ★引っ越しの前に、進行中のドラッグを畳む（地図が固まったままにしない）
   const dock = $("#map-dock"), home = $("#map-dock-home");
   if (!dock || !home) return;
@@ -2249,14 +2583,17 @@ function syncMapDock() {
   if (!dock || !home) return;
   const schedPanel = $("#panel-schedule");
   const schedVisible = !!schedPanel && schedPanel.classList.contains("active");
+  if (!schedVisible) endSchedResize(false);
   const wantSlot = !!slot && !!schedEditing && schedMapOpen && schedVisible;
   const target = wantSlot ? slot : home;
   if (dock.parentNode === target) return;
+  cancelMapPinch();
   if (!wantSlot) { undockMap(); return; }
   target.appendChild(dock);
   dock.classList.add("in-editor");
+  const firstMap = !map;
   ensureMap();   // マップタブを一度も開いていなくても、ここで作られる
-  revealMap();   // 新しい親でサイズを測り直し、持ち越していた初期表示の範囲を当てる
+  revealMap(firstMap); // 初回だけ全地点へ合わせ、開き直しでは見ていた中心を保つ
 }
 
 /* ===== 地図のピンをスケジュールへドラッグして入れる（プランニング） =====
@@ -2577,6 +2914,7 @@ async function loadWeather() {
 function setupTabs() {
   $$("#tabs .tab").forEach(tab => {   // weatherLoaded は loadWeather() 側（成功時だけ立てる）
     tab.addEventListener("click", () => {
+      cancelMapPinch();
       $$("#tabs .tab").forEach(t => t.classList.remove("active"));
       $$(".panel").forEach(p => p.classList.remove("active"));
       tab.classList.add("active");
