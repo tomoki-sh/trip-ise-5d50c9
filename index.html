@@ -22,7 +22,7 @@
        「新しい index.html ＋ 古い app.js」の組み合わせが起き、
        タブは増えているのに中身が空、という状態になる。
        ★公開準備コマンドが全ローカルJS/CSSの内容から自動更新する。手で数字を変更しない。 -->
-  <link rel="stylesheet" href="style.css?v=45c35dfa3a83" />
+  <link rel="stylesheet" href="style.css?v=091f54b07854" />
 </head>
 <body>
   <header class="hero">
@@ -56,8 +56,8 @@
       <button id="auth-sign-in" type="button" hidden>Googleでログイン（初回のみ）</button>
       <button id="auth-sign-out" type="button" hidden>ログアウト</button>
       <button id="sync-retry" type="button" hidden>再試行</button>
-      <button id="sync-use-local" type="button" hidden>この端末の変更を共有する</button>
-      <button id="sync-use-remote" type="button" hidden>共有側の内容を使う</button>
+      <button id="sync-use-local" data-shared-edit type="button" hidden>この端末の変更を共有する</button>
+      <button id="sync-use-remote" data-shared-edit type="button" hidden>共有側の内容を使う</button>
     </aside>
     <!-- スケジュール -->
     <section class="panel active" id="panel-schedule">
@@ -191,10 +191,10 @@
       <h2 class="panel-title">注意・要確認</h2>
       <p class="panel-lead"><strong>予約チェックリスト</strong>と、当日の判断材料。上から順に、いま押さえるべきことが並んでいます。<strong>「✏️ 編集する」を押すと</strong>、項目の追加・削除・並び替え・書き換えができます（変更は<strong>同行者の端末にもリアルタイムで反映</strong>されます）。本文で <code>**文字**</code> と書くと<strong>太字</strong>になります。</p>
       <div class="info-toolbar">
-        <button class="btn-ghost" id="info-edit-toggle">✏️ 編集する</button>
+        <button class="btn-ghost" id="info-edit-toggle" data-shared-edit>✏️ 編集する</button>
         <span class="edit-only">
-          <button class="btn-ghost" id="info-add">＋ 項目を追加</button>
-          <button class="btn-ghost" id="info-reset">初期状態に戻す</button>
+          <button class="btn-ghost" id="info-add" data-shared-edit>＋ 項目を追加</button>
+          <button class="btn-ghost" id="info-reset" data-shared-edit>初期状態に戻す</button>
           <button class="btn-ghost" id="info-export">共有用に書き出す</button>
         </span>
       </div>
@@ -224,8 +224,8 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js" defer></script>
-  <script src="trip-data.js?v=45c35dfa3a83" defer></script>
-  <script src="app.js?v=45c35dfa3a83" defer></script>
+  <script src="trip-data.js?v=091f54b07854" defer></script>
+  <script src="app.js?v=091f54b07854" defer></script>
 
   <!-- Firebase リアルタイム同期（スケジュール・確定状態・ルートを全員で共有）
        apiKey 等は秘密情報ではなく識別子。共有データの保護は、許可したGoogleアカウントを確認するDBルールで行う。 -->
@@ -249,7 +249,7 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getDatabase(app);
-    window.FB = { db, ref, onValue, set, get, runTransaction, authenticated: false, userEmail: "" };
+    window.FB = { db, ref, onValue, set, get, runTransaction, authenticated: false, uid: "", userEmail: "" };
     const loginButton = document.getElementById("auth-sign-in");
     const logoutButton = document.getElementById("auth-sign-out");
     const provider = new GoogleAuthProvider();
@@ -275,9 +275,11 @@
         // Existing anonymous sessions require one deliberate Google sign-in.
         const googleUser = user && !user.isAnonymous;
         window.FB.authenticated = !!googleUser;
+        window.FB.uid = googleUser ? user.uid : "";
         window.FB.userEmail = googleUser ? (user.email || "") : "";
         loginButton.hidden = !!googleUser;
         logoutButton.hidden = !googleUser;
+        window.handleFirebaseAuthChange();
         if (googleUser) {
           const previous = localStorage.getItem("ise-trip-user");
           if (previous && previous !== user.uid) { window.clearSharedCache(); localStorage.setItem("ise-trip-user", user.uid); location.reload(); return; }

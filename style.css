@@ -1060,3 +1060,7 @@ body.day-single .sched-list .sched-day-head { display: none; }
   .ticket-shot, .ticket-shot img { flex-basis: 88px; width: 88px; height: 88px; }
   .want-star { font-size: 1.28rem; padding: .16rem .16rem; }  /* 指で押しやすく */
 }
+
+/* Keep edit entry points discoverable; activating them points to Google sign-in. */
+button[data-shared-edit][aria-disabled="true"] { opacity: .6; }
+textarea[data-shared-edit][readonly] { background: var(--kinari); cursor: text; }

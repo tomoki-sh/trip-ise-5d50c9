@@ -86,7 +86,7 @@ function loadStatusMap() {
 let statusMap = loadStatusMap();
 function saveStatusMap() { localStorage.setItem(STATUS_KEY, JSON.stringify({ v: STATUS_VERSION, map: statusMap })); fbPush("status", statusToArray()); }
 function getStatus(id) { return statusMap[id] === "confirmed" ? "confirmed" : "tentative"; }
-function setStatus(id, s) { statusMap[id] = (s === "confirmed" ? "confirmed" : "tentative"); saveStatusMap(); rerenderStatus(); }
+function setStatus(id, s) { if (!requireSharedEditing()) return; statusMap[id] = (s === "confirmed" ? "confirmed" : "tentative"); saveStatusMap(); rerenderStatus(); }
 function toggleStatus(id) { setStatus(id, getStatus(id) === "confirmed" ? "tentative" : "confirmed"); }
 const STATUS_LABEL = { confirmed: "確定", tentative: "未確定" };
 
@@ -119,6 +119,7 @@ function noteToArray() { return Object.keys(noteMap).map(id => ({ id, t: noteMap
 function getWant(id) { const n = parseInt(wantMap[id], 10); return (n >= 1 && n <= WANT_MAX) ? n : 0; }
 function saveWant() { localStorage.setItem(WANT_KEY, JSON.stringify({ v: WANT_VERSION, map: wantMap })); fbPush("want", wantToArray()); }
 function setWant(id, n) {
+  if (!requireSharedEditing()) return;
   const v = Math.max(0, Math.min(WANT_MAX, parseInt(n, 10) || 0));
   if (v === 0) delete wantMap[id]; else wantMap[id] = v;
   saveWant();
@@ -134,6 +135,7 @@ function saveNote(defer = false) { localStorage.setItem(NOTE_KEY, JSON.stringify
    （入力中に innerHTML を作り直すと、IMEの変換とカーソル位置が飛ぶ） */
 let noteTimer = null;
 function setNoteDebounced(id, text) {
+  if (!requireSharedEditing()) return;
   if (text) noteMap[id] = text; else delete noteMap[id];
   saveNote(true);  // 入力は即座に端末へ保存し、他端末からの受信で消えないようにする。
   clearTimeout(noteTimer);
@@ -145,11 +147,11 @@ function wantStarsHtml(id) {
   const cur = getWant(id);
   const stars = Array.from({ length: WANT_MAX }, (_, i) => {
     const n = i + 1;
-    return `<button class="want-star${n <= cur ? " on" : ""}" data-want-set="${esc(id)}|${n}"
+    return `<button class="want-star${n <= cur ? " on" : ""}" ${sharedEditAttrs()} data-want-set="${esc(id)}|${n}"
       aria-label="行きたい度を${n}にする" title="行きたい度 ${n}">${n <= cur ? "★" : "☆"}</button>`;
   }).join("");
   return `<span class="want-label">行きたい度</span>${stars}` +
-    (cur ? `<button class="want-clear" data-want-set="${esc(id)}|0" title="評価を消す">×</button>` : "");
+    (cur ? `<button class="want-clear" ${sharedEditAttrs()} data-want-set="${esc(id)}|0" title="評価を消す">×</button>` : "");
 }
 function refreshWantRows() {
   $$("[data-want-row]").forEach(el => { el.innerHTML = wantStarsHtml(el.dataset.wantRow); });
@@ -533,7 +535,7 @@ function renderImageBlock(p) {
 function catRibbon(p) {
   const id = placeId(p.type, p.name);
   const st = getStatus(id);
-  return `<button type="button" class="cat-ribbon status-${st}" data-status-toggle="${esc(id)}" title="タップで確定／未確定を切替">${STATUS_LABEL[st]}</button>`;
+  return `<button type="button" class="cat-ribbon status-${st}" ${sharedEditAttrs()} data-status-toggle="${esc(id)}" title="タップで確定／未確定を切替">${STATUS_LABEL[st]}</button>`;
 }
 function ratingChips(p) {
   if (!p.ratings) return "";
@@ -559,7 +561,7 @@ function linkPills(p) {
   // その地点に紐づくチケットがあれば、チケットタブへのピルを出す（紐づけは DATA.tickets 側が持つ）
   ticketsFor(placeId(p.type, p.name)).forEach(t =>
     pills.push(`<button class="pill ticket" data-goto-ticket="${esc(t.id)}">🎫 ${esc(t.title)}</button>`));
-  pills.push(`<button class="pill add-sched" data-add-sched="${esc(placeId(p.type, p.name))}">＋ スケジュールに追加</button>`);
+  pills.push(`<button class="pill add-sched" ${sharedEditAttrs()} data-add-sched="${esc(placeId(p.type, p.name))}">＋ スケジュールに追加</button>`);
   return `<div class="card-links">${pills.join("")}</div>`;
 }
 /* メモ欄の開閉は「見る人ごとの一時的な表示状態」なので保存も同期もしない（追補H-9）。
@@ -585,7 +587,7 @@ function renderCard(p) {
       ${p.notes ? `<div class="card-notes">${p.notes}</div>` : ""}
       <details class="note-box"${cardNoteOpen[pid] ? " open" : ""}>
         <summary>📝 メモ${getNote(pid) ? `<span class="note-dot" title="メモがあります">●</span>` : ""}</summary>
-        <textarea class="note-input" data-note="${esc(pid)}"
+        <textarea class="note-input" ${sharedEditAttrs()} ${canEditShared() ? "" : "readonly"} data-note="${esc(pid)}"
           placeholder="ここに書いたメモは2人で共有されます（例: 予約した／席の希望／苦手なもの）">${esc(getNote(pid))}</textarea>
       </details>
       ${linkPills(p)}
@@ -660,7 +662,7 @@ function scheduleCardsHtml(rows, opts = {}) {
   const today = todayKey();
   return groups.map(g => {
     const edit = opts.editable
-      ? `<button class="plan-edit" data-edit-day="${esc(g.day)}">編集</button>` : "";
+      ? `<button class="plan-edit" ${sharedEditAttrs()} data-edit-day="${esc(g.day)}">編集</button>` : "";
     /* ★「今日」は本命プランにだけ出す。予備プラン（過去の控え）に出すと
          どれが今日の予定なのか分からなくなる。旅行期間外は today がどの日にも
          一致しないので、何も起きない＝次の旅行にそのまま引き継げる。 */
@@ -693,8 +695,8 @@ function renderMasterPlan() {
     </div>
     <div class="plan-list">${scheduleCardsHtml(schedule, { editable: true })}</div>
     <div class="plan-list-tools">
-      <button class="btn-ghost" id="plan-edit-all">全体を編集</button>
-      <button class="btn-ghost" id="plan-backup">予備プランへ書き出す</button>
+      <button class="btn-ghost" id="plan-edit-all" ${sharedEditAttrs()}>全体を編集</button>
+      <button class="btn-ghost" id="plan-backup" ${sharedEditAttrs()}>予備プランへ書き出す</button>
     </div>`;
   $$("#master-plan .plan-edit").forEach(b =>
     b.addEventListener("click", () => openSchedEditor(b.dataset.editDay)));
@@ -758,9 +760,9 @@ function renderBackupPlans() {
       <summary><span class="bp-title">${esc(p.title)}</span>
         <span class="tag alt">${(p.items || []).length}件</span></summary>
       <div class="plan-actions">
-        <button class="bp-restore" data-id="${p.id}">本命へ上書き</button>
+        <button class="bp-restore" ${sharedEditAttrs()} data-id="${p.id}">本命へ上書き</button>
         <button class="bp-copy" data-id="${p.id}">コピー</button>
-        <button class="bp-del" data-id="${p.id}" aria-label="この予備プランを削除">削除</button>
+        <button class="bp-del" ${sharedEditAttrs()} data-id="${p.id}" aria-label="この予備プランを削除">削除</button>
       </div>
       <div class="plan-list">${scheduleCardsHtml(p.items || [])}</div>
     </details>`).join("");
@@ -780,6 +782,7 @@ function renderBackupPlans() {
      schedDayView は編集を閉じても最後の日が残るので、これを条件にすると
      全体を控えたつもりが1日ぶんだけ書き出される（静かに間違う）。 */
 function exportScheduleAsBackup() {
+  if (!requireSharedEditing()) return;
   const scope = (schedEditing && schedEditing !== "all") ? schedEditing : null;
   const src = scope ? schedule.filter(it => normalizeDay(it.day) === scope) : schedule;
   if (!src.length) { window.alert("本命プランが空です。先に予定を入れてください。"); return; }
@@ -796,6 +799,7 @@ function exportScheduleAsBackup() {
 
 /* 予備プランで本命プランを置き換える（★破壊的。同行者の画面にも即反映される） */
 function restoreBackupPlan(id) {
+  if (!requireSharedEditing()) return;
   const p = plans.find(x => x.id === id); if (!p) return;
   if (!window.confirm(
       `「${p.title}」で本命プランを置き換えます。\n\n`
@@ -809,6 +813,7 @@ function restoreBackupPlan(id) {
 }
 
 function deleteBackupPlan(id) {
+  if (!requireSharedEditing()) return;
   const p = plans.find(x => x.id === id); if (!p) return;
   if (!window.confirm(`予備プラン「${p.title}」を削除しますか？（同行者の画面からも消えます）`)) return;
   plans = plans.filter(x => x.id !== id);
@@ -1141,6 +1146,7 @@ function schedRowHtml(it, i) {
    ★編集モードでないときは DOM ごと作らない。隠すだけでは SortableJS が生き残り、
      スマホのスクロール中の誤タップで予定が入れ替わる（実際に頻発していた）。 */
 function openSchedEditor(day) {
+  if (!requireSharedEditing()) return;
   schedEditing = day || "all";
   schedDayView = schedEditing;
   renderMasterPlan();          // 編集中の日を示すため描き直す
@@ -1169,12 +1175,12 @@ function renderSchedEditorSection() {
     return;
   }
   host.innerHTML = `
-    <div class="sched-editor is-editing${schedMapOpen ? " with-map" : ""}">
+    <div data-shared-edit class="sched-editor is-editing${schedMapOpen ? " with-map" : ""}">
       <div class="sched-edit-head">
         <h3 class="sched-subhead">編集中${schedEditing === "all" ? "（全体）" : `（${esc(dayLabel(schedEditing))}）`}</h3>
         <button class="btn-primary sched-done">編集を終える</button>
       </div>
-      <p class="sched-hint muted">変更は<strong>入力した時点で同行者にも反映</strong>されます（保存ボタンはありません）。「編集を終える」で読みやすい表示に戻ります。</p>
+      <p class="sched-hint muted">変更は<strong>入力した時点でこの端末に保存</strong>され、接続中は同行者にも反映されます（保存ボタンはありません）。「編集を終える」で読みやすい表示に戻ります。</p>
       <div class="sched-legend">
         <span class="st-chip confirmed">確定</span><span>タップで未確定に切り替わります</span>
         <span class="st-chip tentative">未確定</span><span>地点に紐づく行（📍）はカード・マップとも連動します</span>
@@ -1413,6 +1419,7 @@ function populateSchedAddSelect() {
      どちらもここを通る。2か所で書くと、片方だけ直して静かにズレる（0-1）。
    ★ここを変えるとマップのピン順（ルート）と確定状態の出どころが変わる。 */
 function setSchedRef(i, ref) {
+  if (!requireSharedEditing()) return;
   const it = schedule[i]; if (!it) return;
   if (ref) {
     // 紐づけると確定状態は共有ステート（getStatus）に従うようになる。表示が切り替わるのは正しい
@@ -1459,6 +1466,7 @@ function schedDropSlot(beforeNode) {
 
 /* 予定行を「いま見ている日」の末尾に挿す。全体タブならその日のブロックの末尾へ入る */
 function insertSchedItem(item, at) {
+  if (!requireSharedEditing()) return;
   if (typeof at === "number" && at >= 0) {
     schedule.splice(at, 0, item);
   } else {
@@ -1507,6 +1515,7 @@ function setupSchedCandTabs() {
    全体表示では日付見出し行を境に day を振り直すので、
    別の日の見出しの下へドラッグするとその行の所属日が切り替わる。 */
 function rebuildScheduleFromDom() {
+  if (!requireSharedEditing()) return;
   const kids = Array.prototype.slice.call($("#sched-list").children);
   if (schedDayView === "all") {
     let cur = FIRST_DAY;
@@ -1835,7 +1844,7 @@ function renderInfo() {
   }
 
   box.innerHTML = infoItems.map((it, i) => `
-    <div class="info-card edit ${it.warn ? "warn" : ""}" data-i="${i}">
+    <div data-shared-edit class="info-card edit ${it.warn ? "warn" : ""}" data-i="${i}">
       <div class="info-edit-head">
         <span class="info-handle" title="ドラッグで並び替え" aria-label="ドラッグして並び替え">≡</span>
         <input class="info-title" type="text" data-i="${i}" value="${esc(it.title || "")}" placeholder="見出し" aria-label="見出し">
@@ -2015,7 +2024,7 @@ function popupHtml(p, id) {
     <div class="p-area">📍 ${esc(p.area)}</div>
     <p class="p-desc">${mdBold(p.desc)}</p>
     <div class="p-actions">
-      <button class="p-btn add" data-add-sched="${esc(id)}">＋ スケジュールに追加</button>
+      <button class="p-btn add" ${sharedEditAttrs()} data-add-sched="${esc(id)}">＋ スケジュールに追加</button>
       <a class="p-btn maps" href="${placeMapsUrl(p)}" target="_blank" rel="noopener">📍マップ</a>
     </div>
   </div>`;
@@ -2296,6 +2305,7 @@ function setMapGestures(on) {
 }
 
 function onPinDown(e) {
+  if (!canEditShared()) return;
   if (!e.isPrimary || (e.button != null && e.button > 0)) return;
   const pin = e.target && e.target.closest && e.target.closest(".pin[data-id]");
   if (!pin || !$("#sched-list")) return;   // 編集モードで地図を開いているときだけ効く
@@ -2469,6 +2479,7 @@ function renderRouteEditor() {
    ★ルートに直接足すのではなく、唯一の正本であるスケジュールに行を足す。
      ルートはそこから自動で作られる。 */
 function addPlaceToSchedule(id) {
+  if (!requireSharedEditing()) return;
   const p = getPlaceById(id); if (!p) return;
   // 編集中ならその日、そうでなければ初日の末尾へ。どこに入るかを先に伝える
   const day = (schedEditing && schedEditing !== "all") ? schedEditing : FIRST_DAY;
@@ -2605,10 +2616,56 @@ const SYNC_FIELDS = {
 };
 const SYNC_PENDING_KEY = "ise-trip-sync-pending";
 const SYNC_BASE_KEY = "ise-trip-sync-base";
+const SYNC_ACCESS_KEY = "ise-trip-edit-user";
+const SIGN_IN_MESSAGE = "編集するには初回だけGoogleでログインしてください。次回からはこのブラウザでログインが維持されます。";
 let fbReady = false, applyingRemote = false, syncStarting = false, syncBusy = false;
 let fbConnected = false, syncError = "", syncConflict = "", syncLatest = {};
 let syncUserName = "";
+let syncSession = 0, syncUnsubscribers = [], sharedAccessVerified = false;
 let syncPending = readSyncStore(SYNC_PENDING_KEY), syncBases = readSyncStore(SYNC_BASE_KEY);
+function canEditShared() {
+  return window.ITINERARY_LOCAL_PREVIEW === true || (window.FB?.authenticated === true && sharedAccessVerified);
+}
+function sharedEditAttrs() { return `data-shared-edit aria-disabled="${!canEditShared()}"`; }
+function requireSharedEditing() {
+  if (canEditShared()) return true;
+  if (!window.FB?.authenticated) window.reportSyncError(SIGN_IN_MESSAGE);
+  else if (!syncError) window.reportSyncError("編集の準備中です。共有データへの接続を確認してからお試しください。");
+  $("#sync-status")?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+  const login = $("#auth-sign-in");
+  if (login && !login.hidden) login.focus({ preventScroll: true });
+  return false;
+}
+function updateSharedEditing() {
+  const allowed = canEditShared();
+  document.body.classList.toggle("shared-readonly", !allowed);
+  if (!allowed) {
+    endPinDrag();
+    if (schedEditing) closeSchedEditor();
+    if (infoEditing) { infoEditing = false; renderInfo(); }
+  }
+  $$("[data-shared-edit]").forEach(el => {
+    el.setAttribute("aria-disabled", String(!allowed));
+    if (el.matches("textarea")) el.readOnly = !allowed;
+  });
+}
+function stopFirebaseSync() {
+  syncSession++;
+  syncUnsubscribers.splice(0).forEach(unsubscribe => unsubscribe());
+  fbReady = false; fbConnected = false; syncStarting = false; syncBusy = false;
+}
+function revokeSharedEditing() {
+  sharedAccessVerified = false;
+  localStorage.removeItem(SYNC_ACCESS_KEY);
+  updateSharedEditing();
+}
+window.handleFirebaseAuthChange = function () {
+  stopFirebaseSync(); syncUserName = ""; syncError = "";
+  sharedAccessVerified = !!window.FB?.uid && localStorage.getItem(SYNC_ACCESS_KEY) === window.FB.uid;
+  updateSharedEditing();
+  if (!window.FB?.authenticated) window.reportSyncError(SIGN_IN_MESSAGE);
+  else renderSyncStatus();
+};
 function readSyncStore(key) {
   try {
     const value = JSON.parse(localStorage.getItem(key));
@@ -2629,11 +2686,11 @@ function renderSyncStatus() {
   const box = $("#sync-status"); if (!box) return;
   const pending = Object.keys(syncPending).length;
   let message = "共有に接続中…", state = "connecting";
-  if (syncConflict) {
+  if (syncError) {
+    state = "error"; message = `${syncError}${pending ? " この端末に未送信の変更があります。" : ""}`;
+  } else if (syncConflict) {
     state = "conflict";
     message = `共有側とこの端末の${SYNC_FIELDS[syncConflict].label}が異なります。この端末の変更は残っています。`;
-  } else if (syncError) {
-    state = "error"; message = `${syncError}${pending ? " この端末に未送信の変更があります。" : ""}`;
   } else if (!navigator.onLine || (fbReady && !fbConnected)) {
     state = "offline"; message = pending ? "オフライン・変更はこの端末に保存されています" : "オフライン・この端末の保存内容を表示しています";
   } else if (pending || syncBusy) {
@@ -2643,7 +2700,8 @@ function renderSyncStatus() {
   }
   box.dataset.state = state;
   $("#sync-message").textContent = message;
-  $("#sync-retry").hidden = !syncError || window.FB?.authenticated === false;
+  $("#sync-retry").hidden = !syncError || window.FB?.authenticated !== true;
+  $("#sync-retry").disabled = syncStarting || syncBusy;
   $("#sync-use-local").hidden = !syncConflict;
   $("#sync-use-remote").hidden = !syncConflict;
 }
@@ -2660,18 +2718,21 @@ function fbPush(key, value, defer = false) {
   if (!defer) void flushSync();
 }
 async function flushSync() {
-  if (!fbReady || !fbConnected || syncBusy || syncConflict || syncError) return;
+  if (!fbReady || !fbConnected || syncBusy || syncConflict || syncError || window.FB?.authenticated !== true) return;
+  const session = syncSession;
   syncBusy = true; renderSyncStatus();
   try {
     for (const key of Object.keys(syncPending)) {
       if (!fbConnected) break;
       const entry = syncPending[key];
       const result = await window.FB.runTransaction(window.FB.ref(window.FB.db, "ise-trip/" + key), current => {
+        if (session !== syncSession) return undefined;
         // Compare-and-set: concurrent edits are kept for the user to resolve.
         // A cache miss may conservatively produce a conflict, never a blind overwrite.
         if (syncEqual(current, entry.value) || (entry.known && syncEqual(current, entry.base))) return entry.value;
         return undefined;
       }, { applyLocally: false });
+      if (session !== syncSession) return;
       if (!result.committed) {
         syncLatest[key] = result.snapshot.val() ?? [];
         syncConflict = key; break;
@@ -2684,16 +2745,19 @@ async function flushSync() {
       persistSync();
     }
   } catch (err) {
+    if (session !== syncSession) return;
     syncError = "共有へ送信できませんでした。通信とアクセス権を確認して再試行してください。";
     console.warn("Firebase sync failed:", err.code || err);
   } finally {
-    syncBusy = false; renderSyncStatus();
-    if (Object.keys(syncPending).length && !syncConflict && !syncError && fbConnected) void flushSync();
+    if (session === syncSession) {
+      syncBusy = false; renderSyncStatus();
+      if (Object.keys(syncPending).length && !syncConflict && !syncError && fbConnected) void flushSync();
+    }
   }
 }
 function receiveRemote(d) {
   if (!d || typeof d !== "object" || Array.isArray(d)) {
-    window.reportSyncError("共有データを読み取れませんでした。再試行してください。"); return;
+    window.reportSyncError("共有データを読み取れませんでした。再試行してください。"); return false;
   }
   // Trip-specific names live in the protected database, never in public assets.
   const member = Array.isArray(d.members) ? d.members.find(item =>
@@ -2704,7 +2768,7 @@ function receiveRemote(d) {
     const value = d[key] ?? (Object.hasOwn(d, field.versionKey) ? [] : null);
     if (value === null) continue;
     if (!Array.isArray(value) || value.some(x => !x || typeof x !== "object" || Array.isArray(x))) {
-      window.reportSyncError("共有データの形式を確認できません。端末の内容を保持しています。"); return;
+      window.reportSyncError("共有データの形式を確認できません。端末の内容を保持しています。"); return false;
     }
     incoming[key] = value;
   }
@@ -2715,6 +2779,7 @@ function receiveRemote(d) {
     syncBases[key] = syncClone(value); applicable[key] = value;
   }
   applyRemote(applicable); persistSync(); renderSyncStatus();
+  return true;
 }
 function restorePendingEdits() {
   const pending = {};
@@ -2725,18 +2790,31 @@ function restorePendingEdits() {
   applyRemote(pending);
 }
 function setupSyncStatus() {
+  // Capture before individual controls can change shared state. Reading, copying,
+  // filters, maps and the device-only packing checklist remain available.
+  for (const type of ["click", "beforeinput", "input", "change"]) {
+    document.addEventListener(type, event => {
+      if (canEditShared() || !event.target.closest?.("[data-shared-edit]")) return;
+      if (type === "click" && event.target.matches("textarea[data-note]")) return; // Allow selecting/copying saved notes.
+      event.preventDefault(); event.stopImmediatePropagation();
+      if (event.target.matches("textarea[data-note]")) event.target.value = getNote(event.target.dataset.note);
+      requireSharedEditing();
+    }, true);
+  }
   $("#sync-retry").addEventListener("click", () => {
     syncError = "";
     if (fbReady) void flushSync(); else void window.startFirebaseSync();
     renderSyncStatus();
   });
   $("#sync-use-local").addEventListener("click", () => {
+    if (!requireSharedEditing()) return;
     const key = syncConflict;
     if (!key || !confirm(`${SYNC_FIELDS[key].label}をこの端末の内容で共有しますか？別の端末の変更を上書きするため、同行者と確認してください。`)) return;
     syncPending[key].base = syncClone(syncLatest[key] ?? []); syncPending[key].known = true;
     syncConflict = ""; persistSync(); void flushSync();
   });
   $("#sync-use-remote").addEventListener("click", () => {
+    if (!requireSharedEditing()) return;
     const key = syncConflict;
     if (!key || !confirm(`この端末の未送信の${SYNC_FIELDS[key].label}を取り消し、共有側の内容を使いますか？`)) return;
     delete syncPending[key]; syncConflict = "";
@@ -2827,44 +2905,62 @@ function rerenderAll() {
 // 認証完了後に module から呼ばれる
 window.startFirebaseSync = async function () {
   if (!window.FB || window.FB.authenticated !== true || fbReady || syncStarting) return;
+  stopFirebaseSync();
+  const session = syncSession;
+  const current = () => session === syncSession && window.FB.authenticated === true;
+  const track = unsubscribe => { if (current()) syncUnsubscribers.push(unsubscribe); else unsubscribe(); };
+  const fail = (message, accessDenied = false) => {
+    if (!current()) return;
+    stopFirebaseSync();
+    if (accessDenied) revokeSharedEditing();
+    window.reportSyncError(message);
+  };
   syncStarting = true; syncError = ""; renderSyncStatus();
   try {
     const tripRef = window.FB.ref(window.FB.db, "ise-trip");
     const d = (await window.FB.get(tripRef)).val() || {};
+    if (!current()) return;
     // Only a never-created collection receives defaults. A missing value with a
     // version marker means the user cleared the list (RTDB stores [] as null).
     for (const [key, field] of Object.entries(SYNC_FIELDS)) {
       if (d[key] == null && !Object.hasOwn(d, field.versionKey)) {
         await window.FB.runTransaction(window.FB.ref(window.FB.db, "ise-trip/" + key),
-          current => current == null ? syncClone(field.value()) : undefined, { applyLocally: false });
+          value => current() && value == null ? syncClone(field.value()) : undefined, { applyLocally: false });
+        if (!current()) return;
       }
       if (!Object.hasOwn(d, field.versionKey)) {
         await window.FB.runTransaction(window.FB.ref(window.FB.db, "ise-trip/" + field.versionKey),
-          current => current == null ? field.version : undefined, { applyLocally: false });
+          value => current() && value == null ? field.version : undefined, { applyLocally: false });
+        if (!current()) return;
       }
     }
-    receiveRemote((await window.FB.get(tripRef)).val() || {});
-    fbReady = true;
-    window.FB.onValue(tripRef, s => receiveRemote(s.val()), () => {
-      window.reportSyncError("共有の読み取りが停止しました。アクセス権を確認してページを開き直してください。");
-    });
-    window.FB.onValue(window.FB.ref(window.FB.db, ".info/connected"), s => {
-      fbConnected = s.val() === true; renderSyncStatus();
+    track(window.FB.onValue(window.FB.ref(window.FB.db, ".info/connected"), snapshot => {
+      if (!current()) return;
+      fbConnected = snapshot.val() === true; renderSyncStatus();
       if (fbConnected) void flushSync();
-    });
-    renderSyncStatus();
+    }));
+    // A successful get alone is not enough: retry must attach a new live listener
+    // and receive a valid snapshot before reporting successful synchronization.
+    track(window.FB.onValue(tripRef, snapshot => {
+      if (!current()) return;
+      if (!receiveRemote(snapshot.val() || {})) { stopFirebaseSync(); renderSyncStatus(); return; }
+      syncError = ""; fbReady = true; syncStarting = false;
+      sharedAccessVerified = true;
+      if (window.FB.uid) localStorage.setItem(SYNC_ACCESS_KEY, window.FB.uid);
+      updateSharedEditing(); renderSyncStatus(); void flushSync();
+    }, () => fail("共有の読み取りが停止しました。アクセス権を確認して再試行してください。", true)));
   } catch (err) {
-    fbReady = false;
-    window.reportSyncError(/permission.?denied/i.test(err.code || err.message || "")
+    const denied = /permission.?denied/i.test(err.code || err.message || "");
+    fail(denied
       ? "このGoogleアカウントには共有データのアクセス権がありません。登録したアカウントでログインしてください。"
-      : "共有に接続できませんでした。通信とアクセス権を確認して再試行してください。");
+      : "共有に接続できませんでした。通信とアクセス権を確認して再試行してください。", denied);
     console.warn("Firebase sync start failed:", err.code || err);
-  } finally { syncStarting = false; }
+  }
 };
 
 window.clearSharedCache = function () {
   [SCHED_KEY, STATUS_KEY, INFO_KEY, PLANS_KEY, WANT_KEY, NOTE_KEY,
-   SYNC_PENDING_KEY, SYNC_BASE_KEY, "ise-trip-user"].forEach(key => localStorage.removeItem(key));
+   SYNC_PENDING_KEY, SYNC_BASE_KEY, SYNC_ACCESS_KEY, "ise-trip-user"].forEach(key => localStorage.removeItem(key));
 };
 function init() {
   setupSyncStatus();
@@ -2952,6 +3048,7 @@ function init() {
     infoItems = INFO_DEFAULT.map(x => ({ ...x })); saveInfo(); renderInfo();
   });
   $("#info-export").addEventListener("click", exportInfo);
+  updateSharedEditing();
   window.itineraryReady = true;
   window.dispatchEvent(new Event("itinerary-ready"));
 }
