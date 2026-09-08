@@ -22,7 +22,7 @@
        「新しい index.html ＋ 古い app.js」の組み合わせが起き、
        タブは増えているのに中身が空、という状態になる。
        ★公開準備コマンドが全ローカルJS/CSSの内容から自動更新する。手で数字を変更しない。 -->
-  <link rel="stylesheet" href="style.css?v=cec2518c9180" />
+  <link rel="stylesheet" href="style.css?v=45c35dfa3a83" />
 </head>
 <body>
   <header class="hero">
@@ -224,8 +224,8 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js" defer></script>
-  <script src="trip-data.js?v=cec2518c9180" defer></script>
-  <script src="app.js?v=cec2518c9180" defer></script>
+  <script src="trip-data.js?v=45c35dfa3a83" defer></script>
+  <script src="app.js?v=45c35dfa3a83" defer></script>
 
   <!-- Firebase リアルタイム同期（スケジュール・確定状態・ルートを全員で共有）
        apiKey 等は秘密情報ではなく識別子。共有データの保護は、許可したGoogleアカウントを確認するDBルールで行う。 -->
@@ -249,7 +249,7 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getDatabase(app);
-    window.FB = { db, ref, onValue, set, get, runTransaction, authenticated: false };
+    window.FB = { db, ref, onValue, set, get, runTransaction, authenticated: false, userEmail: "" };
     const loginButton = document.getElementById("auth-sign-in");
     const logoutButton = document.getElementById("auth-sign-out");
     const provider = new GoogleAuthProvider();
@@ -275,6 +275,7 @@
         // Existing anonymous sessions require one deliberate Google sign-in.
         const googleUser = user && !user.isAnonymous;
         window.FB.authenticated = !!googleUser;
+        window.FB.userEmail = googleUser ? (user.email || "") : "";
         loginButton.hidden = !!googleUser;
         logoutButton.hidden = !googleUser;
         if (googleUser) {
@@ -283,7 +284,7 @@
           localStorage.setItem("ise-trip-user", user.uid);
           window.startFirebaseSync();
         } else {
-          window.reportSyncError("共有するには初回だけGoogleでログインしてください。次回からはこのブラウザで維持されます。");
+          window.reportSyncError("編集するには初回だけGoogleでログインしてください。次回からはこのブラウザでログインが維持されます。");
         }
       };
       if (window.itineraryReady) applyUser();

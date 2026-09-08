@@ -2607,6 +2607,7 @@ const SYNC_PENDING_KEY = "ise-trip-sync-pending";
 const SYNC_BASE_KEY = "ise-trip-sync-base";
 let fbReady = false, applyingRemote = false, syncStarting = false, syncBusy = false;
 let fbConnected = false, syncError = "", syncConflict = "", syncLatest = {};
+let syncUserName = "";
 let syncPending = readSyncStore(SYNC_PENDING_KEY), syncBases = readSyncStore(SYNC_BASE_KEY);
 function readSyncStore(key) {
   try {
@@ -2637,7 +2638,9 @@ function renderSyncStatus() {
     state = "offline"; message = pending ? "オフライン・変更はこの端末に保存されています" : "オフライン・この端末の保存内容を表示しています";
   } else if (pending || syncBusy) {
     state = "pending"; message = fbReady ? "共有へ送信中…" : "この端末に保存済み・共有への接続を待っています";
-  } else if (fbReady) { state = "synced"; message = "共有と同期済み"; }
+  } else if (fbReady) {
+    state = "synced"; message = syncUserName ? `ようこそ${syncUserName}さん！` : "ようこそ！";
+  }
   box.dataset.state = state;
   $("#sync-message").textContent = message;
   $("#sync-retry").hidden = !syncError || window.FB?.authenticated === false;
@@ -2692,6 +2695,10 @@ function receiveRemote(d) {
   if (!d || typeof d !== "object" || Array.isArray(d)) {
     window.reportSyncError("共有データを読み取れませんでした。再試行してください。"); return;
   }
+  // Trip-specific names live in the protected database, never in public assets.
+  const member = Array.isArray(d.members) ? d.members.find(item =>
+    typeof item?.email === "string" && item.email.toLowerCase() === window.FB?.userEmail?.toLowerCase()) : null;
+  syncUserName = typeof member?.name === "string" ? member.name.trim() : "";
   const incoming = {};
   for (const [key, field] of Object.entries(SYNC_FIELDS)) {
     const value = d[key] ?? (Object.hasOwn(d, field.versionKey) ? [] : null);
