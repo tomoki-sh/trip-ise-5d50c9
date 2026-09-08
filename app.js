@@ -170,7 +170,7 @@ function refreshNotes() {
 // status に依存する全ビューを再描画（カード・マップのピン・スケジュール）
 function rerenderStatus() {
   renderAllCards();
-  if (typeof map !== "undefined" && map) refreshMarkers();
+  if (typeof map !== "undefined" && map) { refreshMarkers(); applyFilters(); }
   if ($("#sched-list")) renderScheduleEditor();
 }
 /* ===== カードの絞り込み・並び替え（スポット／レストラン／カフェ共通） =====
@@ -439,7 +439,8 @@ function tableScore(p) {
 function gotoPlaceCard(key, id) {
   const card = $$(CARD_TABS[key].target + " .card").find(c => c.dataset.place === id);
   if (!card) return;   // 表とカードは同じ viewedItems から作るので通常ここには来ない
-  card.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (browseViews[key]?.open) scrollBrowseCard(key, id);
+  else card.scrollIntoView({ behavior: "smooth", block: "start" });
   // 連続でタップしてもハイライトが再生されるよう、一度外してリフローを挟む
   card.classList.remove("just-jumped");
   void card.offsetWidth;
@@ -485,27 +486,13 @@ function renderCardTable(key) {
 }
 
 function renderCardTab(key) {
-  /* ★メモを打っている最中にこの関数が走ることがある（同行者の同期・絞り込み・確定切替）。
-     innerHTML を作り直すと入力欄ごと消えるので、どこにカーソルがあったかを控えて戻す。
-     控えないと「打っている途中で急に入力が効かなくなる」という、原因の分からない壊れ方をする。 */
-  const act = document.activeElement;
-  const keep = (act && act.matches && act.matches("textarea[data-note]"))
-    ? { id: act.dataset.note, start: act.selectionStart, end: act.selectionEnd } : null;
-
+  // 同期・確定切替でも入力中のカードは再利用する。メモのDOM維持はrenderPlaceCardsに集約。
   renderCardTools(key);
   renderCardTable(key);
   const t = CARD_TABS[key], list = viewedItems(key);
   const box = $(t.target); if (!box) return;
-  if (list.length) renderCards(t.target, list, t.type);
-  else box.innerHTML = `<p class="muted">${esc(t.empty)}</p>`;
-
-  if (keep) {
-    const back = $$("textarea[data-note]").find(x => x.dataset.note === keep.id);
-    if (back) {
-      back.focus();
-      try { back.setSelectionRange(keep.start, keep.end); } catch (err) {}
-    }
-  }
+  renderPlaceCards(box, list.map(p => ({ ...p, type: t.type })), t.empty);
+  if (activeBrowseKey() === key && map) applyFilters();
 }
 
 /* ★カード再描画の唯一の入口。個別に renderCards() を呼ぶとツールバーを通らず、
@@ -513,6 +500,7 @@ function renderCardTab(key) {
 function renderAllCards() {
   $$("[data-place-count]").forEach(el => { el.textContent = String((DATA[el.dataset.placeCount] || []).length); });
   Object.keys(CARD_TABS).forEach(renderCardTab);
+  renderMapCards();
 }
 
 /* =========================================================================
@@ -591,11 +579,288 @@ function renderCard(p) {
           placeholder="ここに書いたメモは2人で共有されます（例: 予約した／席の希望／苦手なもの）">${esc(getNote(pid))}</textarea>
       </details>
       ${linkPills(p)}
+      <button class="btn-ghost browse-locate" data-browse-locate="${esc(pid)}">地図で確認</button>
     </div>
   </article>`;
 }
 function renderCards(targetId, items, type) {
-  $(targetId).innerHTML = items.map(p => renderCard({ ...p, type })).join("");
+  renderPlaceCards($(targetId), items.map(p => ({ ...p, type })));
+}
+
+// 同じ地点のDOMを再利用する。別タブの同名カードへフォーカスを移さず、IME変換も維持する。
+function renderPlaceCards(box, items, empty = "条件に合う地点がありません。") {
+  if (!box) return;
+  const active = document.activeElement, focused = box.contains(active);
+  const selection = focused && active.matches("textarea") ? [active.selectionStart, active.selectionEnd] : null;
+  const scroller = box.closest(".browse-cards"), scroll = scroller?.scrollTop;
+  const existing = new Map($$(".card", box).map(c => [c.dataset.place, c]));
+  let cursor = box.firstElementChild;
+  items.forEach(p => {
+    const id = placeId(p.type, p.name), old = existing.get(id);
+    let card = old;
+    if (!card) {
+      const template = document.createElement("template");
+      template.innerHTML = renderCard(p); card = template.content.firstElementChild;
+    } else {
+      const ribbon = $(".cat-ribbon", card), status = getStatus(id);
+      ribbon.className = `cat-ribbon status-${status}`; ribbon.textContent = STATUS_LABEL[status];
+      const stars = $(".want-row", card), html = wantStarsHtml(id);
+      if (stars.innerHTML !== html) stars.innerHTML = html;
+      const note = $("textarea[data-note]", card);
+      if (note !== active && note.value !== getNote(id)) note.value = getNote(id);
+      $(".note-box summary", card).innerHTML = `📝 メモ${getNote(id) ? '<span class="note-dot" title="メモがあります">●</span>' : ""}`;
+    }
+    if (card !== cursor) box.insertBefore(card, cursor);
+    cursor = card.nextElementSibling; existing.delete(id);
+  });
+  existing.forEach(card => card.remove());
+  $$(":scope > p", box).forEach(p => p.remove());
+  if (!items.length) box.innerHTML = `<p class="muted">${esc(empty)}</p>`;
+  if (focused && active.isConnected && document.activeElement !== active) {
+    active.focus({ preventScroll: true });
+    if (selection) active.setSelectionRange(...selection);
+  }
+  if (scroller) scroller.scrollTop = scroll;
+}
+
+/* ===== 地図とカードの比較。表示条件は既存の各タブだけが持つ ===== */
+const BROWSE_LAYOUT_KEY = "ise-trip-browse-layout";
+const browseViews = Object.fromEntries(["spots", "restaurants", "cafes", "map"].map(key =>
+  [key, { open: false, selected: null, hover: null, focused: null, scroll: 0 }]));
+let browsePrefs = loadBrowseLayout(), browseController = null;
+let mapContext = "shared";
+const mapViews = {};
+function activeBrowseKey() {
+  const key = $("#tabs .tab.active")?.dataset.tab;
+  return browseViews[key]?.open ? key : null;
+}
+function browsePlaces(key) {
+  return key === "map" ? filteredMapPlaces() : viewedItems(key).map(p => ({ ...p, type: CARD_TABS[key].type }));
+}
+function renderMapCards() {
+  if (!browseViews.map.open) return;
+  renderPlaceCards($("#cards-map"), filteredMapPlaces());
+  reconcileBrowseSelection("map");
+}
+function loadBrowseLayout() {
+  const out = {};
+  try {
+    const raw = JSON.parse(localStorage.getItem(BROWSE_LAYOUT_KEY));
+    if (raw?.v !== 1) return out;
+    for (const key of ["spots", "restaurants", "cafes", "map"]) {
+      const r = raw.ratios?.[key], sum = Array.isArray(r) && r.reduce((a, b) => a + b, 0);
+      if (r?.length === 2 && r.every(x => Number.isFinite(x) && x > 0) && Number.isFinite(sum)) out[key] = r.map(x => x / sum);
+    }
+  } catch (e) {}
+  return out;
+}
+function saveBrowseWidths(c) {
+  const sum = c.widths.reduce((a, b) => a + b, 0);
+  browsePrefs[c.key] = c.widths.map(x => x / sum);
+  try { localStorage.setItem(BROWSE_LAYOUT_KEY, JSON.stringify({ v: 1, ratios: browsePrefs })); } catch (e) {}
+}
+function applyBrowseWidths(c, widths) {
+  c.widths = widths;
+  c.root.style.gridTemplateColumns = `${widths[0]}px 16px ${widths[1]}px`;
+  c.handle.setAttribute("aria-valuemin", "280");
+  c.handle.setAttribute("aria-valuemax", String(Math.floor(widths[0] + widths[1] - 280)));
+  c.handle.setAttribute("aria-valuenow", String(Math.round(widths[0])));
+  c.handle.setAttribute("aria-valuetext", `${Math.round(widths[0])}ピクセル`);
+}
+function endBrowseResize(commit = false) {
+  const c = browseController, d = c?.drag; if (!d) return;
+  c.drag = null;
+  d.events.abort();
+  if (d.handle.hasPointerCapture?.(d.id)) d.handle.releasePointerCapture(d.id);
+  document.body.classList.remove("browse-resizing");
+  if (commit) saveBrowseWidths(c); else applyBrowseWidths(c, d.widths);
+}
+function startBrowseResize(e) {
+  const c = browseController;
+  if (!c || c.phone || e.button !== 0 || e.isPrimary === false) return;
+  endBrowseResize(); endPinDrag(); cancelMapPinch();
+  e.preventDefault(); e.stopPropagation();
+  const d = { handle: e.currentTarget, id: e.pointerId, x: e.clientX, widths: c.widths.slice(), events: new AbortController() };
+  const opts = { signal: d.events.signal };
+  const move = e => {
+    if (e.pointerId !== d.id) return;
+    e.preventDefault(); applyBrowseWidths(c, moveSchedBoundary(d.widths, [280, 280], 0, e.clientX - d.x));
+  };
+  c.drag = d;
+  window.addEventListener("pointermove", move, { ...opts, passive: false });
+  window.addEventListener("pointerup", e => { if (e.pointerId === d.id) { move(e); endBrowseResize(true); } }, opts);
+  const cancel = () => endBrowseResize();
+  window.addEventListener("pointercancel", cancel, opts);
+  window.addEventListener("blur", cancel, opts);
+  window.addEventListener("keydown", e => { if (e.key === "Escape") { e.preventDefault(); cancel(); } }, opts);
+  d.handle.addEventListener("lostpointercapture", cancel, opts);
+  d.handle.setPointerCapture?.(d.id);
+  document.body.classList.add("browse-resizing");
+}
+function resizeBrowseByKey(e) {
+  const c = browseController, delta = { ArrowLeft: -16, ArrowRight: 16, Home: -Infinity, End: Infinity }[e.key];
+  if (!c || c.phone || delta === undefined) return;
+  e.preventDefault(); e.stopPropagation(); endBrowseResize(); cancelMapPinch();
+  applyBrowseWidths(c, moveSchedBoundary(c.widths, [280, 280], 0, delta)); saveBrowseWidths(c);
+}
+function refreshBrowseLayout() {
+  const c = browseController; if (!c) return;
+  const width = c.root.getBoundingClientRect().width;
+  const phone = window.innerWidth < 760 || (width > 0 && width < 576);
+  if (phone !== c.phone || width !== c.available) endBrowseResize();
+  const returningToColumns = c.phone === true && !phone;
+  if (c.phone === false && phone) browseViews[c.key].scroll = c.scroller.scrollTop;
+  c.phone = phone; c.available = width;
+  const tabsHeight = $("#tabs")?.getBoundingClientRect().height || 52;
+  c.root.style.setProperty("--browse-tabs-height", `${tabsHeight}px`);
+  c.root.style.setProperty("--browse-height", `${Math.max(360, Math.min(760, window.innerHeight - tabsHeight - 32))}px`);
+  c.root.dataset.layout = phone ? "phone" : "columns";
+  c.root.classList.toggle("no-sticky", window.innerHeight < 520 || !!document.activeElement?.matches("textarea, input:not([type=checkbox]):not([type=radio]), [contenteditable=true]"));
+  c.handle.hidden = phone;
+  $(`#browse-reset-${c.key}`).hidden = phone;
+  if (phone) c.root.style.removeProperty("grid-template-columns");
+  else if (width > 0 && !c.drag) applyBrowseWidths(c, fitSchedWidths(width - 16, browsePrefs[c.key] || [.6, .4], [280, 280]));
+  if (returningToColumns) c.scroller.scrollTop = browseViews[c.key].scroll;
+  queueMapResize();
+}
+function syncBrowseLayout() {
+  const key = activeBrowseKey();
+  if (browseController?.key === key) { refreshBrowseLayout(); return; }
+  if (browseController) {
+    endBrowseResize();
+    if (browseViews[browseController.key].open && $(`#panel-${browseController.key}.active`)) {
+      browseViews[browseController.key].scroll = browseController.scroller.scrollTop;
+    }
+    browseController.observer?.disconnect();
+    browseController = null;
+  }
+  if (!key) return;
+  const root = $(`#browse-${key}`);
+  if (!root) return;
+  const scroller = $(".browse-cards", root);
+  browseController = { key, root, scroller, handle: $(".browse-splitter", root), widths: [], phone: null, available: null };
+  if (typeof ResizeObserver === "function") {
+    browseController.observer = new ResizeObserver(refreshBrowseLayout);
+    browseController.observer.observe(root);
+    browseController.observer.observe($("#tabs"));
+  }
+  refreshBrowseLayout(); scroller.scrollTop = browseViews[key].scroll;
+}
+function rememberBrowseScroll() {
+  if (browseController && !browseController.phone) browseViews[browseController.key].scroll = browseController.scroller.scrollTop;
+}
+function toggleBrowse(key) {
+  rememberBrowseScroll(); endBrowseResize();
+  const v = browseViews[key]; v.open = !v.open;
+  v.hover = null; v.focused = null;
+  if (!v.open) { focusPin(null); map?.closePopup(); }
+  const root = $(`#browse-${key}`);
+  root.classList.toggle("is-open", v.open);
+  $(".browse-map-pane", root).hidden = key !== "map" && !v.open;
+  $(".browse-cards", root).hidden = key === "map" && !v.open;
+  $(".browse-map-actions", root).hidden = !v.open;
+  $(".browse-splitter", root).hidden = !v.open;
+  $(`#browse-reset-${key}`).hidden = !v.open;
+  const toggle = $(`#browse-toggle-${key}`);
+  toggle.textContent = key === "map" ? (v.open ? "カードを閉じる" : "カードを表示") : (v.open ? "地図を閉じる" : "地図を開く");
+  toggle.setAttribute("aria-expanded", String(v.open));
+  if (key === "map" && v.open) renderMapCards();
+  syncMapDock(); syncBrowseLayout();
+  if (v.open && !map) $(".browse-map-message", root).textContent = "地図を読み込めません。ページを再読み込みしてください。";
+}
+function setupBrowse() {
+  for (const key of Object.keys(browseViews)) {
+    const isMap = key === "map", anchor = isMap ? $("#map-dock-home") : $(CARD_TABS[key].target);
+    const controls = document.createElement("div"); controls.className = "browse-controls";
+    controls.innerHTML = `<button class="btn-ghost" id="browse-toggle-${key}" aria-expanded="false" aria-controls="browse-${key}">${isMap ? "カードを表示" : "地図を開く"}</button><button class="btn-ghost" id="browse-reset-${key}" hidden>列幅を標準に戻す</button>`;
+    const root = document.createElement("div"); root.id = `browse-${key}`; root.className = "browse-layout";
+    root.innerHTML = `<div class="browse-map-pane"${isMap ? "" : " hidden"}>
+      <div class="browse-map-actions" hidden><button class="btn-ghost browse-fit">表示中の地点を収める</button><button class="btn-ghost browse-close">${isMap ? "カードを閉じる" : "地図を閉じる"}</button></div>
+      <div class="browse-map-message muted" role="status"></div><div class="browse-map-slot" id="browse-slot-${key}"></div></div>
+      <div class="browse-splitter" role="separator" tabindex="0" aria-orientation="vertical" aria-label="地図の列幅" aria-controls="browse-slot-${key}" hidden></div>
+      <div class="browse-cards" id="browse-list-${key}" role="region" aria-label="${isMap ? "地図の地点" : CARD_TABS[key].label}のカード一覧"${isMap ? " hidden" : ""}></div>`;
+    anchor.before(controls, root);
+    if (isMap) {
+      const filters = document.createElement("div"); filters.id = "browse-map-filter-slot"; controls.before(filters);
+      $(".browse-map-slot", root).appendChild(anchor);
+      $(".browse-cards", root).innerHTML = '<div class="cards" id="cards-map"></div>';
+    } else $(".browse-cards", root).appendChild(anchor);
+    $(`#browse-toggle-${key}`).addEventListener("click", () => toggleBrowse(key));
+    $(".browse-close", root).addEventListener("click", () => { toggleBrowse(key); $(`#browse-toggle-${key}`).focus({ preventScroll: true }); });
+    $(".browse-fit", root).addEventListener("click", fitBrowsePlaces);
+    $(`#browse-reset-${key}`).addEventListener("click", () => {
+      endBrowseResize(); delete browsePrefs[key];
+      try { localStorage.setItem(BROWSE_LAYOUT_KEY, JSON.stringify({ v: 1, ratios: browsePrefs })); } catch (e) {}
+      refreshBrowseLayout();
+    });
+    $(".browse-splitter", root).addEventListener("pointerdown", startBrowseResize);
+    $(".browse-splitter", root).addEventListener("keydown", resizeBrowseByKey);
+    const list = $(".browse-cards", root);
+    list.addEventListener("pointerover", e => {
+      if (activeBrowseKey() !== key || e.pointerType === "touch") return;
+      browseViews[key].hover = e.target.closest(".card")?.dataset.place || null; updateBrowseFocus();
+    });
+    list.addEventListener("pointerleave", () => { browseViews[key].hover = null; updateBrowseFocus(); });
+    list.addEventListener("focusin", e => {
+      browseViews[key].focused = e.target.closest(".card")?.dataset.place || null; updateBrowseFocus();
+    });
+    list.addEventListener("focusout", e => {
+      browseViews[key].focused = list.contains(e.relatedTarget) ? e.relatedTarget.closest(".card")?.dataset.place : null; updateBrowseFocus();
+    });
+    list.addEventListener("click", e => {
+      if (activeBrowseKey() !== key) return;
+      const card = e.target.closest(".card"); if (!card) return;
+      const locate = e.target.closest("[data-browse-locate]");
+      if (!locate && (e.target.closest("button, a, input, textarea, select, summary, details, [contenteditable]") || String(window.getSelection?.() || ""))) return;
+      selectBrowsePlace(key, card.dataset.place, false);
+    });
+  }
+  window.addEventListener("resize", refreshBrowseLayout);
+  document.addEventListener("focusin", refreshBrowseLayout);
+  document.addEventListener("focusout", () => requestAnimationFrame(refreshBrowseLayout));
+  document.addEventListener("visibilitychange", () => { if (document.hidden) endBrowseResize(); });
+}
+function reconcileBrowseSelection(key) {
+  const v = browseViews[key], ids = new Set(browsePlaces(key).map(p => placeId(p.type, p.name)));
+  if (v.selected && !ids.has(v.selected)) { v.selected = null; if (activeBrowseKey() === key) map?.closePopup(); }
+  for (const field of ["hover", "focused"]) if (!ids.has(v[field])) v[field] = null;
+  if (activeBrowseKey() === key) updateBrowseFocus();
+}
+function updateBrowseFocus() {
+  const key = activeBrowseKey(); if (!key) return;
+  const v = browseViews[key]; focusPin(v.hover || v.focused || v.selected);
+  $$(`#browse-list-${key} .card`).forEach(card => card.classList.toggle("is-map-selected", card.dataset.place === v.selected));
+}
+function scrollBrowseCard(key, id) {
+  const list = $(`#browse-list-${key}`), card = $$(".card", list).find(c => c.dataset.place === id);
+  if (!card) return;
+  const smooth = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+  if (browseController?.key === key && !browseController.phone) {
+    const top = card.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
+    list.scrollTo?.({ top: Math.max(0, top - 4), behavior: smooth });
+  } else {
+    const root = $(`#browse-${key}`), pane = $(".browse-map-pane", root);
+    const offset = root.classList.contains("no-sticky") ? 12 : pane.getBoundingClientRect().height + ($("#tabs")?.getBoundingClientRect().height || 52) + 12;
+    window.scrollTo({ top: window.scrollY + card.getBoundingClientRect().top - offset, behavior: smooth });
+  }
+}
+function selectBrowsePlace(key, id, fromPin) {
+  const m = markers[id]; if (!m || !markerLayer.hasLayer(m)) return;
+  const v = browseViews[key]; v.selected = id; v.hover = null; v.focused = null; updateBrowseFocus();
+  if (fromPin) scrollBrowseCard(key, id);
+  else {
+    cancelMapPinch();
+    const point = map.latLngToContainerPoint(m.getLatLng()), size = map.getSize();
+    if (point.x < 50 || point.x > size.x - 50 || point.y < 60 || point.y > size.y - 50) map.panTo(m.getLatLng(), { animate: false });
+    m.openPopup();
+  }
+}
+function fitBrowsePlaces() {
+  const key = activeBrowseKey(); if (!map || !key) return;
+  const points = browsePlaces(key).map(p => p.coords);
+  if (!points.length) return;
+  cancelMapPinch(); map.closePopup();
+  map.fitBounds(L.latLngBounds(points), { padding: [30, 30], maxZoom: 15, animate: false });
 }
 
 /* =========================================================================
@@ -1246,18 +1511,12 @@ function setupSchedLayout() {
     c.raf = requestAnimationFrame(() => {
       c.raf = 0;
       refreshSchedLayout();
-      const el = $("#map"), width = el?.clientWidth || 0, height = el?.clientHeight || 0;
-      if (map && width > 0 && height > 0 && (width !== c.mapWidth || height !== c.mapHeight)) {
-        // invalidateSize の中心補正を使う。fitBounds は呼ばず、見ていた中心・ズームを保つ。
-        map.invalidateSize({ animate: false, debounceMoveend: true });
-      }
-      c.mapWidth = width; c.mapHeight = height;
+      queueMapResize();
     });
   };
   if (typeof ResizeObserver === "function") {
     c.observer = new ResizeObserver(c.resize);
     c.observer.observe(grid);
-    if ($("#map")) c.observer.observe($("#map"));
   }
   window.addEventListener("resize", c.resize);
   $$(".sched-splitter", grid).forEach(handle => {
@@ -1384,7 +1643,7 @@ function renderSchedEditorSection() {
      下の2つの分岐はどちらも host.innerHTML を書き換えるので、分岐より前に置くこと。
      ここを飛ばすと Leaflet のコンテナごと捨てられ、地図が二度と戻らない。
      tools/test_days.js「16. 地図の間借り」がこの順序をソースでも固定している。 */
-  undockMap();
+  if (host.contains($("#map-dock"))) undockMap();
   if (!schedEditing) {
     // ★空にすると、Sortable が握っていた要素ごと GC される。フラグも戻す
     host.innerHTML = "";
@@ -2341,29 +2600,34 @@ function visibleRouteIds() {
   //   ルートがスケジュールの導出値になったので、そういう地点は存在しなくなった
   return out;
 }
-function applyFilters() {
+// 地図タブのカードとピンが同じ判定を使う。日・予定の既存の意味は変えない。
+function filteredMapPlaces() {
   const f = currentFilters();
-  const all = allPlaces();
-  let shown = 0;
-  all.forEach(p => {
-    const id = placeId(p.type, p.name);
-    const m = markers[id];
-    if (!m) return;
-    const inRoute = routeIndex(id) >= 0;
-    const pdays = daysOfPlace(id);
+  return allPlaces().filter(p => {
+    const id = placeId(p.type, p.name), inRoute = routeIndex(id) >= 0, pdays = daysOfPlace(id);
     const dayOk = !f.dayFilterOn || pdays.size === 0 || f.days.some(x => pdays.has(x));
-    // 犬の条件はカードと同じ groupKeyOf() で引く。areaKey の付け忘れは "other" になり
-    // どの区分にも入らないので静かに消える（test_cardtools.js が全件を検査している）
     const areaOk = !f.area || f.area.includes(groupKeyOf(p, "area"));
-    // 予定に入っているか。チップの値と対にして、日・犬と同じ「列内は OR」で扱う
     const planOk = !f.planFilterOn || f.plan.includes(inRoute ? "route-only" : "route-none");
-    const show = f.type.includes(p.type) && f.status.includes(getStatus(id)) && dayOk && areaOk && planOk;
-    if (show) { shown++; if (!markerLayer.hasLayer(m)) m.addTo(markerLayer); }
-    else { if (markerLayer.hasLayer(m)) markerLayer.removeLayer(m); }
+    return f.type.includes(p.type) && f.status.includes(getStatus(id)) && dayOk && areaOk && planOk;
   });
-  // カードのツールバーの件数表示と対にする（日で絞ったとき何地点残るか分かる）
+}
+function applyFilters() {
+  const key = activeBrowseKey();
+  const places = key ? browsePlaces(key) : filteredMapPlaces();
+  const ids = new Set(places.map(p => placeId(p.type, p.name)));
+  Object.entries(markers).forEach(([id, m]) => {
+    if (ids.has(id)) { if (!markerLayer.hasLayer(m)) m.addTo(markerLayer); }
+    else if (markerLayer.hasLayer(m)) markerLayer.removeLayer(m);
+  });
   const c = $("#map-filter-count");
-  if (c) c.textContent = `${shown} / ${all.length}地点`;
+  if (c) c.textContent = `${filteredMapPlaces().length} / ${allPlaces().length}地点`;
+  if (key) {
+    const root = $(`#browse-${key}`);
+    $(".browse-map-message", root).textContent = places.length ? "" : "条件に合う地点がありません。絞り込みを変更してください。";
+    $(".browse-fit", root).disabled = !places.length;
+    reconcileBrowseSelection(key);
+  }
+  renderMapCards();
 }
 function routeCoords() {
   return visibleRouteIds().map(getPlaceById).filter(Boolean).map(p => p.coords);
@@ -2386,6 +2650,7 @@ function googleMapsDirUrl() {
 function drawRouteLine() {
   const coords = routeCoords();
   if (routeLine) map.removeLayer(routeLine);
+  if (activeBrowseKey() && activeBrowseKey() !== "map") { routeLine = null; return; }
   routeLine = L.polyline(coords, { color: "#1f9c9c", weight: 3, dashArray: "7 7", opacity: .85 }).addTo(map);
 }
 function refreshMarkers() {
@@ -2393,12 +2658,14 @@ function refreshMarkers() {
     const id = placeId(p.type, p.name);
     if (markers[id]) markers[id].setIcon(makeIcon(p, id));
   });
+  updateBrowseFocus();
 }
 /* 予定の行にポインタを乗せたとき、その地点のピンを目立たせる。
    ★状態は持たない。クラスを付けて外すだけなので、refreshMarkers() でピンが
      作り直されても次にポインタを乗せた時点で付き直る（ズレが残らない）。 */
 function focusPin(id) {
   $$("#map .pin.is-focus").forEach(el => el.classList.remove("is-focus"));
+  Object.entries(markers).forEach(([key, m]) => m.setZIndexOffset?.(key === id ? 10000 : 0));
   if (!id || !markers[id] || !markers[id].getElement) return;
   const el = markers[id].getElement();
   const pin = el && el.querySelector(".pin");
@@ -2406,7 +2673,7 @@ function focusPin(id) {
 }
 /* ピンから予定行へ。編集中で一覧が出ているときだけ意味がある */
 function scrollSchedRowIntoView(id) {
-  if (!id || !$("#sched-list")) return;
+  if (!id || !$("#panel-schedule.active #sched-list")) return;
   const i = schedule.findIndex(it => it.ref === id);
   if (i < 0) return;
   const row = $$("#sched-list > li.sched-item").find(li => +li.dataset.i === i);
@@ -2418,6 +2685,7 @@ function scrollSchedRowIntoView(id) {
 function setupMap() {
   map = L.map("map", { scrollWheelZoom: false, zoomSnap: .25 });
   cancelMapPinch = installMapTrackpadZoom(map, $("#map"));
+  setupMapSizeObserver();
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 18, attribution: '© OpenStreetMap contributors'
   }).addTo(map);
@@ -2428,21 +2696,30 @@ function setupMap() {
     const id = placeId(p.type, p.name);
     const m = L.marker(p.coords, { icon: makeIcon(p, id) });
     m.bindPopup(popupHtml(p, id));
+    m.on("click", () => { const key = activeBrowseKey(); if (key) selectBrowsePlace(key, id, true); });
     markers[id] = m;
     m.addTo(markerLayer);
     pts.push(p.coords);
   });
   drawRouteLine();
   applyFilters();
-  pendingFit = L.latLngBounds(pts);
+  const initial = activeBrowseKey() ? browsePlaces(activeBrowseKey()).map(p => p.coords) : pts;
+  if (initial.length) pendingFit = L.latLngBounds(initial);
+  else {
+    // 0件でfitBoundsを呼ばない。地図の初期化に必要な中心だけを設定する。
+    const wp = DATA.weatherPoint;
+    map.setView(wp ? [wp.lat, wp.lon] : (pts[0] || [0, 0]), 11);
+  }
   fitMapToPlaces();       // ★見えていれば今すぐ、見えていなければ次の機会に（上の説明）
 
   // フィルタ
   $$("#map-filters input").forEach(i => i.addEventListener("change", () => {
+    // 表示切替は全地図で共用する。カード・ルート・表示範囲には触れない。
+    if (i.closest('[data-group="pinlabel"]')) { refreshMarkers(); return; }
     applyFilters();
     drawRouteLine();      // 日で絞ったら点線も追随させる
     renderRouteEditor();  // 「Googleマップでルートを開く」のURLを組み直す
-    refreshMarkers();     // 「ピンに表示」列（pinlabel）のタグを描き直す
+    refreshMarkers();
   }));
 
   // ポップアップ内「追加」
@@ -2581,19 +2858,66 @@ function undockMap() {
 function syncMapDock() {
   const dock = $("#map-dock"), home = $("#map-dock-home"), slot = $("#sched-map-slot");
   if (!dock || !home) return;
-  const schedPanel = $("#panel-schedule");
-  const schedVisible = !!schedPanel && schedPanel.classList.contains("active");
-  if (!schedVisible) endSchedResize(false);
-  const wantSlot = !!slot && !!schedEditing && schedMapOpen && schedVisible;
-  const target = wantSlot ? slot : home;
-  if (dock.parentNode === target) return;
-  cancelMapPinch();
-  if (!wantSlot) { undockMap(); return; }
-  target.appendChild(dock);
-  dock.classList.add("in-editor");
-  const firstMap = !map;
-  ensureMap();   // マップタブを一度も開いていなくても、ここで作られる
-  revealMap(firstMap); // 初回だけ全地点へ合わせ、開き直しでは見ていた中心を保つ
+  const active = $("#tabs .tab.active")?.dataset.tab;
+  const key = activeBrowseKey();
+  const wantSlot = !!slot && !!schedEditing && schedMapOpen && active === "schedule";
+  const category = key && key !== "map" ? key : null;
+  const target = category ? $(`#browse-slot-${category}`) : wantSlot ? slot : home;
+  const context = category || "shared";
+  if (map && mapContext !== context) {
+    mapViews[mapContext] = { center: map.getCenter(), zoom: map.getZoom() };
+  }
+  const changed = mapContext !== context;
+  if (dock.parentNode !== target || changed) {
+    cancelMapPinch(); endSchedResize(false); endBrowseResize(); endPinDrag();
+    focusPin(null);
+    Object.values(browseViews).forEach(v => { v.hover = null; v.focused = null; });
+    target.appendChild(dock);
+  }
+  if (!wantSlot) endSchedResize(false);
+  dock.classList.toggle("in-editor", wantSlot);
+  dock.classList.toggle("in-browse-category", !!category);
+  const filters = $("#map-filters");
+  const filterHome = key === "map" ? $("#browse-map-filter-slot") : dock;
+  if (filters && filterHome && filters.parentNode !== filterHome) filterHome.prepend(filters);
+  syncBrowseLayout();
+  if (wantSlot || key || active === "map") {
+    const firstMap = !map;
+    mapContext = context;
+    ensureMap();
+    if (!map) return;
+    revealMap(firstMap);
+    if (changed) {
+      const view = mapViews[context];
+      if (view) map.setView(view.center, view.zoom, { animate: false });
+      else if (key) fitBrowsePlaces();
+      else { pendingFit = L.latLngBounds(allPlaces().map(p => p.coords)); fitMapToPlaces(); }
+    }
+    applyFilters(); drawRouteLine(); updateBrowseFocus(); queueMapResize();
+  }
+}
+
+// 地図1個に監視も1組。非表示・ドック移動・列幅変更をまとめて扱う。
+let mapSizeObserver = null, mapSizeFrame = 0, mapLastSize = "";
+function queueMapResize() {
+  if (!map || mapSizeFrame) return;
+  mapSizeFrame = requestAnimationFrame(() => {
+    mapSizeFrame = 0;
+    const el = $("#map"), size = `${el?.clientWidth},${el?.clientHeight}`;
+    if (el?.clientWidth && el?.clientHeight && size !== mapLastSize) {
+      map.invalidateSize({ animate: false, debounceMoveend: true }); mapLastSize = size;
+    }
+  });
+}
+function setupMapSizeObserver() {
+  if (typeof ResizeObserver === "function") {
+    mapSizeObserver = new ResizeObserver(queueMapResize); mapSizeObserver.observe($("#map"));
+  }
+  window.addEventListener("resize", queueMapResize);
+  map.on("unload", () => {
+    mapSizeObserver?.disconnect(); window.removeEventListener("resize", queueMapResize);
+    cancelAnimationFrame(mapSizeFrame); mapSizeFrame = 0;
+  });
 }
 
 /* ===== 地図のピンをスケジュールへドラッグして入れる（プランニング） =====
@@ -2645,7 +2969,7 @@ function onPinDown(e) {
   if (!canEditShared()) return;
   if (!e.isPrimary || (e.button != null && e.button > 0)) return;
   const pin = e.target && e.target.closest && e.target.closest(".pin[data-id]");
-  if (!pin || !$("#sched-list")) return;   // 編集モードで地図を開いているときだけ効く
+  if (!pin || !$("#sched-list") || !$("#panel-schedule.active") || !$("#map-dock.in-editor")) return;   // 編集モードで地図を開いているときだけ効く
   const place = getPlaceById(pin.dataset.id);
   if (!place) return;
   endPinDrag();
@@ -2914,7 +3238,9 @@ async function loadWeather() {
 function setupTabs() {
   $$("#tabs .tab").forEach(tab => {   // weatherLoaded は loadWeather() 側（成功時だけ立てる）
     tab.addEventListener("click", () => {
-      cancelMapPinch();
+      rememberBrowseScroll(); cancelMapPinch(); endBrowseResize();
+      Object.values(browseViews).forEach(v => { v.hover = null; v.focused = null; });
+      focusPin(null); map?.closePopup();
       $$("#tabs .tab").forEach(t => t.classList.remove("active"));
       $$(".panel").forEach(p => p.classList.remove("active"));
       tab.classList.add("active");
@@ -3310,6 +3636,7 @@ function init() {
   // ★最初に呼ぶ。setupMap() はマップタブを開くまで走らないが、下の renderRouteEditor() が
   //   currentFilters() 経由でルート列の .checked を読むため、ここで無いとページ全体が落ちる。
   renderMapFilters();
+  setupBrowse();
   // ★スケジュールタブは「本命プラン（読む）＋ 予備プラン」。編集セクションは
   //   renderSchedule() の中で schedEditing を見て作られる（既定は作られない＝誤タップ防止）
   renderSchedule();

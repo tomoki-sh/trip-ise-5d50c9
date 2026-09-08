@@ -22,7 +22,7 @@
        「新しい index.html ＋ 古い app.js」の組み合わせが起き、
        タブは増えているのに中身が空、という状態になる。
        ★公開準備コマンドが全ローカルJS/CSSの内容から自動更新する。手で数字を変更しない。 -->
-  <link rel="stylesheet" href="style.css?v=2241c74b12a4" />
+  <link rel="stylesheet" href="style.css?v=92e06802ba41" />
 </head>
 <body>
   <header class="hero">
@@ -94,10 +94,10 @@
       <h2 class="panel-title">マップ</h2>
       <p class="panel-lead">ピンをタップで詳細。<strong>下の「回る順番」はスケジュールの本命プランから自動で作られます</strong>（順番を変えるにはスケジュールタブで編集してください）。<strong>「日」で9/21と9/22を分けると、その日ぶんだけのナビが開けます</strong>。<strong>「エリア」</strong>は5区分あり、鳥羽は<strong>「駅ちかく（1km以内）」と「車で移動」に分けて</strong>あります（2日目は17時前にレンタカーを返すので、そのあと行けるのは徒歩圏だけになります）。<strong>「予定」の「まだ入っていない」</strong>で、本命プランに入れていない地点だけを探せます。経由地は9件が上限なので、地点を足しすぎるとナビのボタンが警告色になります。</p>
       <!-- ★#map-dock は「地図とそのフィルタ」をひとまとめにした引っ越し単位。
-           スケジュールタブの編集モードで「地図で選ぶ」を開いたとき、そちらへ丸ごと移る。
+           スケジュールの編集モード、または各カードタブで地図を開くとそちらへ移る。
            家はこの #map-dock-home で、置き場所を決めるのは app.js の syncMapDock() だけ。
            ・1ノードにまとめてあるので、引っ越しで動かすのは常に1回の appendChild で済む
-           ・フィルタの change 結線は input 自身に付いているので、移動しても外れない
+           ・比較表示中のマップタブではフィルタを比較エリア上部へ移す。結線と選択値は維持する
            中身は app.js の renderMapFilters() が MAP_FILTER_COLUMNS から描く。ここには何も書かない -->
       <div id="map-dock-home">
         <div id="map-dock">
@@ -224,8 +224,8 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js" defer></script>
-  <script src="trip-data.js?v=2241c74b12a4" defer></script>
-  <script src="app.js?v=2241c74b12a4" defer></script>
+  <script src="trip-data.js?v=92e06802ba41" defer></script>
+  <script src="app.js?v=92e06802ba41" defer></script>
 
   <!-- Firebase リアルタイム同期（スケジュール・確定状態・ルートを全員で共有）
        apiKey 等は秘密情報ではなく識別子。共有データの保護は、許可したGoogleアカウントを確認するDBルールで行う。 -->

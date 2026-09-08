@@ -1108,3 +1108,61 @@ body.sched-resizing, body.sched-resizing * { cursor: col-resize !important; user
 /* Keep edit entry points discoverable; activating them points to Google sign-in. */
 button[data-shared-edit][aria-disabled="true"] { opacity: .6; }
 textarea[data-shared-edit][readonly] { background: var(--kinari); cursor: text; }
+
+/* ===== 地図とカードの比較（4タブ共通） ===== */
+.browse-controls, .browse-map-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.browse-controls { margin-bottom: .8rem; }
+.browse-layout [hidden], .browse-controls [hidden] { display: none !important; }
+.browse-layout { min-width: 0; margin-bottom: 1rem; }
+.browse-layout.is-open { display: grid; grid-template-columns: minmax(280px, 3fr) 16px minmax(280px, 2fr); align-items: start; }
+.browse-map-pane, .browse-cards, .browse-map-slot { min-width: 0; }
+.browse-layout.is-open .browse-map-pane { height: var(--browse-height, 560px); display: flex; flex-direction: column; background: var(--kinari); }
+.browse-map-actions { padding: 0 0 .5rem; }
+.browse-map-actions .browse-close { margin-left: auto; }
+.browse-map-message:empty { display: none; }
+.browse-map-message { font-size: .82rem; padding: .4rem; }
+.browse-layout.is-open .browse-map-slot { flex: 1; min-height: 0; }
+.browse-layout.is-open .browse-map-slot > #map-dock,
+.browse-layout.is-open #map-dock-home, .browse-layout.is-open #map-dock-home > #map-dock { height: 100%; }
+.browse-layout.is-open #map { height: 100%; min-height: 0; margin: 0; }
+/* 既存の操作欄を共用し、カテゴリでは絞り込みを隠して表示切替だけを残す。 */
+#map-dock.in-browse-category { display: flex; flex-direction: column; }
+#map-dock.in-browse-category .map-filters { flex: none; margin-bottom: .5rem; }
+#map-dock.in-browse-category .map-filters .tools-head,
+#map-dock.in-browse-category .filter-group:not([data-group="pinlabel"]) { display: none; }
+#map-dock.in-browse-category .filter-group[data-group="pinlabel"] { grid-template-columns: minmax(0, 1fr); border-top: 0; }
+#map-dock.in-browse-category .filter-label { padding: .3rem .6rem; border-right: 0; border-bottom: 1px solid var(--line); }
+#map-dock.in-browse-category #map { flex: 1; height: 0; }
+.browse-layout.is-open .browse-cards { overflow-anchor: none; height: var(--browse-height, 560px); overflow-y: auto; scrollbar-gutter: stable; padding: 4px 6px 4px 4px; }
+.browse-layout.is-open .cards { grid-template-columns: minmax(0, 1fr); align-content: start; }
+.browse-layout.is-open .card { min-width: 0; overflow-wrap: anywhere; }
+.browse-splitter { height: var(--browse-height, 560px); width: 16px; position: relative; cursor: col-resize; touch-action: none; }
+.browse-splitter::after { content: ""; position: absolute; inset: 35% 5px; border-radius: 6px; background: #b6ae9e; }
+.browse-splitter:hover::after, .browse-splitter:focus-visible::after { background: var(--cyan); }
+.browse-splitter:focus-visible { outline: 2px solid var(--cyan); outline-offset: -2px; border-radius: 6px; }
+.browse-resizing, .browse-resizing * { cursor: col-resize !important; user-select: none !important; }
+.browse-locate { display: none; }
+.browse-layout.is-open .browse-locate { display: inline-flex; align-self: flex-start; margin-top: .5rem; }
+.browse-layout.is-open .card.is-map-selected { box-shadow: 0 0 0 3px var(--cyan), var(--shadow); }
+.browse-layout.is-open .card:has(.browse-locate:focus-visible) { outline: 2px solid var(--cyan); }
+@media (min-width: 1080px) {
+  .browse-layout.is-open { --browse-width: min(1900px, calc(100vw - 3rem)); width: var(--browse-width); margin-left: calc((100% - var(--browse-width)) / 2); }
+}
+.browse-layout.is-open[data-layout="phone"] { display: block; }
+.browse-layout.is-open[data-layout="phone"] .browse-map-pane { position: sticky; top: var(--browse-tabs-height, 52px); z-index: 20; height: auto; padding-top: .4rem; margin-bottom: 1rem; }
+.browse-layout.is-open[data-layout="phone"].no-sticky .browse-map-pane { position: static; }
+.browse-layout.is-open[data-layout="phone"] .browse-map-slot { flex: none; }
+.browse-layout.is-open[data-layout="phone"] #map { height: 240px; }
+.browse-layout.is-open[data-layout="phone"] #map-dock.in-browse-category { height: auto; }
+.browse-layout.is-open[data-layout="phone"] #map-dock.in-browse-category #map { flex: none; height: 240px; }
+.browse-layout.is-open[data-layout="phone"] #map-dock.in-browse-category .chip { min-height: 44px; }
+.browse-layout.is-open[data-layout="phone"] .browse-cards { height: auto; overflow: visible; scrollbar-gutter: auto; padding: 4px; }
+.browse-layout.is-open[data-layout="phone"] .browse-map-actions .btn-ghost,
+.browse-layout.is-open[data-layout="phone"] .browse-locate,
+.browse-layout.is-open[data-layout="phone"] [data-add-sched] { min-height: 44px; }
+@media (max-width: 759px) { .browse-controls .btn-ghost { min-height: 44px; } }
+/* Leaflet自身のtransformは変更しない。重なり順はsetZIndexOffsetで制御する。 */
+#map-dock.in-browse-category .pin, .browse-layout.is-open .pin { cursor: pointer; }
+.browse-layout.is-open[data-layout="phone"] .leaflet-popup-content { max-height: 150px; overflow-y: auto; }
+/* 遅延画像の読み込み前から比率を確保し、ピンから移動したカードの位置をずらさない。 */
+.browse-layout .card-img-btn { display: block; width: 100%; padding: 0; border: 0; background: transparent; }
