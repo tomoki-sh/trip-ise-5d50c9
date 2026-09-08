@@ -28,3 +28,8 @@ secrets/
 *.local.md
 *.private.md
 NOTES.local.md
+
+# 予約原本は公開しない（既に追跡済みのファイルは別途削除が必要）
+attachments/
+*.eml
+*.docx

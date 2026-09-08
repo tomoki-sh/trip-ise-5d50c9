@@ -21,8 +21,8 @@
        それぞれ独立に10分キャッシュ（max-age=600）するため、これが無いと
        「新しい index.html ＋ 古い app.js」の組み合わせが起き、
        タブは増えているのに中身が空、という状態になる。
-       ★内容を更新して push するときは、必ずこの数字を +1 すること（3か所とも同じ値）。 -->
-  <link rel="stylesheet" href="style.css?v=7b60b4f3" />
+       ★公開準備コマンドが全ローカルJS/CSSの内容から自動更新する。手で数字を変更しない。 -->
+  <link rel="stylesheet" href="style.css?v=cec2518c9180" />
 </head>
 <body>
   <header class="hero">
@@ -51,6 +51,14 @@
   </nav>
 
   <main class="container">
+    <aside id="sync-status" class="sync-status" aria-label="共有の状態" data-state="connecting">
+      <span id="sync-message" role="status" aria-live="polite">共有に接続中…</span>
+      <button id="auth-sign-in" type="button" hidden>Googleでログイン（初回のみ）</button>
+      <button id="auth-sign-out" type="button" hidden>ログアウト</button>
+      <button id="sync-retry" type="button" hidden>再試行</button>
+      <button id="sync-use-local" type="button" hidden>この端末の変更を共有する</button>
+      <button id="sync-use-remote" type="button" hidden>共有側の内容を使う</button>
+    </aside>
     <!-- スケジュール -->
     <section class="panel active" id="panel-schedule">
       <h2 class="panel-title">スケジュール</h2>
@@ -73,10 +81,10 @@
     <!-- チケット・予約（中身は app.js の DATA.tickets が描画） -->
     <section class="panel" id="panel-tickets">
       <h2 class="panel-title">チケット・予約</h2>
-      <p class="panel-lead">押さえてある予約を、<strong>券面の画像と予約メールの原本つき</strong>でまとめてあります。当日はここを開けば座席番号も店舗の電話番号も出てきます。スケジュールの行とスポットのカードからも 🎫 で飛べます。</p>
+      <p class="panel-lead">押さえてある予約を、<strong>個人情報を除いた概要</strong>でまとめてあります。座席番号と店舗の電話番号を確認できます。乗車時の券面は近鉄の会員サイトで表示してください。スケジュールの行とスポットのカードからも 🎫 で飛べます。</p>
       <div class="info-card warn ticket-notice">
-        <h3>⚠️ このページには予約情報が載っています</h3>
-        <p>券面と予約メールには<strong>氏名・会員番号・予約番号・券番号・認証番号</strong>が含まれます。<strong>このサイトのURLを2人以外に共有しないでください。</strong>URLを知っている人は誰でもこのページを見られます。</p>
+        <h3>🎫 予約原本は手元のメール・公式サイトで確認</h3>
+        <p>このページは予約概要です。<strong>氏名・予約番号・券番号と原本は掲載していません。</strong>乗車・受付には、手元の予約メールまたは公式サイトの券面を用意してください。旅程を含むため、URLの共有範囲にも注意してください。</p>
       </div>
       <div id="tickets-content"></div>
     </section>
@@ -129,7 +137,7 @@
     <!-- スポット -->
     <section class="panel" id="panel-spots">
       <h2 class="panel-title">スポット</h2>
-      <p class="panel-lead">18か所あります。本命プランで行く地点に加えて、<strong>真珠体験の代替施設5か所</strong>、<strong>水族館の駐車場3か所</strong>、<strong>返却前の給油所</strong>まで載せています。<strong>★の「行きたい度」とメモは2人で共有されます。</strong><strong>「種類」と「エリア」は掛け合わせて絞り込めます</strong>（例：種類＝真珠体験 × エリア＝二見・伊勢 → 当日でも動ける近場の代替だけが残ります）。<strong>真珠体験は施設によって料金が1,100円〜3,500円、所要が20分〜60分と大きく違います</strong>。ミキモト真珠島と伊勢神宮は<strong>今回は行かない地点</strong>ですが、判断の理由をカードに残してあります。</p>
+      <p class="panel-lead"><span data-place-count="spots"></span>か所あります。本命プランで行く地点に加えて、<strong>真珠体験の代替施設5か所</strong>、<strong>水族館の駐車場3か所</strong>、<strong>返却前の給油所</strong>まで載せています。<strong>★の「行きたい度」とメモは2人で共有されます。</strong><strong>「種類」と「エリア」は掛け合わせて絞り込めます</strong>（例：種類＝真珠体験 × エリア＝二見・伊勢 → 当日でも動ける近場の代替だけが残ります）。<strong>真珠体験は施設によって料金が1,100円〜3,500円、所要が20分〜60分と大きく違います</strong>。ミキモト真珠島と伊勢神宮は<strong>今回は行かない地点</strong>ですが、判断の理由をカードに残してあります。</p>
       <div class="card-tools" id="tools-spots"></div>
       <!-- 折りたたみ式の一覧表。中身は app.js の renderCardTable() が描画 -->
       <div class="card-table" id="table-spots"></div>
@@ -139,7 +147,7 @@
     <!-- レストラン -->
     <section class="panel" id="panel-restaurants">
       <h2 class="panel-title">レストラン</h2>
-      <p class="panel-lead">19店あります。<strong>「ジャンル」と「エリア」を掛け合わせて絞り込めます</strong>——とくに<strong>エリアの「鳥羽駅ちかく（1km以内）」</strong>は、2日目にレンタカーを17時前に返したあと歩いて行ける店だけに絞れるので便利です。鳥羽駅の目の前には<strong>さざえストリート（鳥羽1-8-7付近）に焼貝の店が4軒</strong>集まっていますが、<strong>18:30まで開いているのは焼貝いろはだけ</strong>で、他は16:00〜17:00に閉まります。<strong>点数は食べログとGoogle（2026年8月31日確認）</strong>。<strong>⚠️ 9/21・9/22はどちらも祝日で、定休日の「振替」が起きやすい日</strong>です。とくに<strong>天びん屋 本店は月曜定休・祝日は営業して翌日に休む運用</strong>なので<strong>9/22（火）が休業になる可能性が高く</strong>、<strong>たこ焼き わらい屋は「祝日は定休」という情報と「日曜のみ定休」という情報が食い違って</strong>います。予定に入れる店は必ず電話で確認してください（番号は各カードにあります）。<strong>★の「行きたい度」とメモは2人で共有されます。</strong></p>
+      <p class="panel-lead"><span data-place-count="restaurants"></span>店あります。<strong>「ジャンル」と「エリア」を掛け合わせて絞り込めます</strong>——とくに<strong>エリアの「鳥羽駅ちかく（1km以内）」</strong>は、2日目にレンタカーを17時前に返したあと歩いて行ける店だけに絞れるので便利です。鳥羽駅の目の前には<strong>さざえストリート（鳥羽1-8-7付近）に焼貝の店が4軒</strong>集まっていますが、<strong>18:30まで開いているのは焼貝いろはだけ</strong>で、他は16:00〜17:00に閉まります。<strong>点数は食べログとGoogle（2026年8月31日確認）</strong>。<strong>⚠️ 9/21・9/22はどちらも祝日で、定休日の「振替」が起きやすい日</strong>です。とくに<strong>天びん屋 本店は月曜定休・祝日は営業して翌日に休む運用</strong>なので<strong>9/22（火）が休業になる可能性が高く</strong>、<strong>たこ焼き わらい屋は「祝日は定休」という情報と「日曜のみ定休」という情報が食い違って</strong>います。予定に入れる店は必ず電話で確認してください（番号は各カードにあります）。<strong>★の「行きたい度」とメモは2人で共有されます。</strong></p>
       <div class="card-tools" id="tools-restaurants"></div>
       <!-- 折りたたみ式の一覧表。中身は app.js の renderCardTable() が描画 -->
       <div class="card-table" id="table-restaurants"></div>
@@ -149,7 +157,7 @@
     <!-- カフェ -->
     <section class="panel" id="panel-cafes">
       <h2 class="panel-title">カフェ</h2>
-      <p class="panel-lead">5店あります。1日目の二見ランチを<strong>「待たずに、時間どおりに出たい」</strong>ときの受け皿と、鳥羽駅前の甘いもの。<strong>⚠️ ただし鳥羽の2店は今回の日程と噛み合いません</strong>——<strong>MUSEA は月・火が定休で9/21も9/22も該当</strong>、<strong>Ephemere は火・水・木が定休で9/22が該当</strong>します。どちらも予約・確認の電話番号をカードに載せてあります。<strong>maruru cafe</strong>は駐車場があって時間を管理しやすく、真珠体験の13:30に確実に間に合わせたい日の安定候補。<strong>汀の杜</strong>は夫婦岩めおと横丁の2階にある2026年開業の新しい店で、景色は魅力ですが連休の待ちが読めません。<strong>鳥羽国際ホテル ザ・ロビーラウンジ</strong>のチーズケーキは任意枠——2日目は動線が逆になるため<strong>原則省略</strong>で、どうしても食べたい場合の条件をカードに書いてあります。</p>
+      <p class="panel-lead"><span data-place-count="cafes"></span>店あります。1日目の二見ランチを<strong>「待たずに、時間どおりに出たい」</strong>ときの受け皿と、鳥羽駅前の甘いもの。<strong>⚠️ ただし鳥羽の2店は今回の日程と噛み合いません</strong>——<strong>MUSEA は月・火が定休で9/21も9/22も該当</strong>、<strong>Ephemere は火・水・木が定休で9/22が該当</strong>します。どちらも予約・確認の電話番号をカードに載せてあります。<strong>maruru cafe</strong>は駐車場があって時間を管理しやすく、真珠体験の13:30に確実に間に合わせたい日の安定候補。<strong>汀の杜</strong>は夫婦岩めおと横丁の2階にある2026年開業の新しい店で、景色は魅力ですが連休の待ちが読めません。<strong>鳥羽国際ホテル ザ・ロビーラウンジ</strong>のチーズケーキは任意枠——2日目は動線が逆になるため<strong>原則省略</strong>で、どうしても食べたい場合の条件をカードに書いてあります。</p>
       <div class="card-tools" id="tools-cafes"></div>
       <!-- 折りたたみ式の一覧表。中身は app.js の renderCardTable() が描画 -->
       <div class="card-table" id="table-cafes"></div>
@@ -205,7 +213,7 @@
 
   <footer class="foot">
     <p>伊勢志摩 2026.9.21-22 ／ 2人で共有用</p>
-    <p class="foot-warn">⚠️ <strong>「チケット」タブに予約情報（氏名・会員番号・予約番号・券番号）を載せています。このURLを2人以外に共有しないでください。</strong></p>
+    <p class="foot-warn"><strong>旅行の予定を含みます。URLは同行者との共有にご利用ください。予約原本は手元で保管してください。</strong></p>
     <p class="muted">写真: Googleマップ（Place Photos）より ／ 点数: 食べログ・Googleマップより（各社・投稿者に権利。私的共有の範囲で参照用）／ 地図: © OpenStreetMap contributors ／ 天気: Open-Meteo</p>
     <details class="photo-credits">
       <summary class="muted">Googleマップ写真の投稿者クレジット（149名）</summary>
@@ -216,18 +224,19 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js" defer></script>
-  <script src="app.js?v=7b60b4f3" defer></script>
+  <script src="trip-data.js?v=cec2518c9180" defer></script>
+  <script src="app.js?v=cec2518c9180" defer></script>
 
   <!-- Firebase リアルタイム同期（スケジュール・確定状態・ルートを全員で共有）
-       apiKey 等は秘密情報ではなく識別子。保護は Realtime Database のルール（匿名ログイン限定）で行う。 -->
+       apiKey 等は秘密情報ではなく識別子。共有データの保護は、許可したGoogleアカウントを確認するDBルールで行う。 -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-    import { getDatabase, ref, onValue, set, get } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+    import { getAuth, GoogleAuthProvider, browserLocalPersistence, setPersistence, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+    import { getDatabase, ref, onValue, set, get, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
     // 汎用プロジェクト travel-itinerary-sites を全旅行で共用。
     // 旅行ごとの分離は app.js の DBパス（この旅行は "ise-trip"）で行う。
     // 使用済み: trip=大阪 / nara-trip=奈良 / takayama-trip=飛騨高山 / maizuru-trip=舞鶴・伊根 / ise-trip=伊勢志摩（この旅行）
-    // apiKey等は公開してよい識別子（秘密鍵ではない）。保護は Realtime Database のルール（匿名ログイン限定）で行う。
+    // apiKey等は公開してよい識別子（秘密鍵ではない）。共有データの保護は、許可したGoogleアカウントを確認するDBルールで行う。
     const firebaseConfig = {
       apiKey: "AIzaSyCeN_PFTYk0VSLitM8_S7YSJelYjqSkIzM",
       authDomain: "travel-itinerary-sites.firebaseapp.com",
@@ -240,10 +249,45 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getDatabase(app);
-    window.FB = { db, ref, onValue, set, get };
-    signInAnonymously(auth).catch(e => console.error("Firebase 匿名ログイン失敗（Authenticationの匿名を有効化してください）:", e));
+    window.FB = { db, ref, onValue, set, get, runTransaction, authenticated: false };
+    const loginButton = document.getElementById("auth-sign-in");
+    const logoutButton = document.getElementById("auth-sign-out");
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+    const authPersistence = setPersistence(auth, browserLocalPersistence);
+    authPersistence.catch(() => window.reportSyncError?.("ログイン状態を保存できません。ブラウザの保存設定を確認してください。"));
+    loginButton.addEventListener("click", async () => {
+      loginButton.disabled = true;
+      try { await authPersistence; await signInWithPopup(auth, provider); }
+      catch (error) {
+        if (error.code !== "auth/popup-closed-by-user") {
+          window.reportSyncError?.("ログインできませんでした。ポップアップの許可と通信状態を確認してください。");
+        }
+      } finally { loginButton.disabled = false; }
+    });
+    logoutButton.addEventListener("click", async () => {
+      if (!confirm("ログアウトすると、このブラウザの共有データと未送信の編集を消去します。ログアウトしますか？")) return;
+      try { await signOut(auth); window.clearSharedCache(); location.reload(); }
+      catch (error) { window.reportSyncError?.("ログアウトできませんでした。再試行してください。"); }
+    });
     onAuthStateChanged(auth, user => {
-      if (user && typeof window.startFirebaseSync === "function") window.startFirebaseSync();
+      const applyUser = () => {
+        // Existing anonymous sessions require one deliberate Google sign-in.
+        const googleUser = user && !user.isAnonymous;
+        window.FB.authenticated = !!googleUser;
+        loginButton.hidden = !!googleUser;
+        logoutButton.hidden = !googleUser;
+        if (googleUser) {
+          const previous = localStorage.getItem("ise-trip-user");
+          if (previous && previous !== user.uid) { window.clearSharedCache(); localStorage.setItem("ise-trip-user", user.uid); location.reload(); return; }
+          localStorage.setItem("ise-trip-user", user.uid);
+          window.startFirebaseSync();
+        } else {
+          window.reportSyncError("共有するには初回だけGoogleでログインしてください。次回からはこのブラウザで維持されます。");
+        }
+      };
+      if (window.itineraryReady) applyUser();
+      else window.addEventListener("itinerary-ready", applyUser, { once: true });
     });
   </script>
 </body>

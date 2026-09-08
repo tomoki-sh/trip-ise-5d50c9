@@ -42,6 +42,16 @@ h1, h2, h3, h4 { font-family: "Shippori Mincho", "Hiragino Mincho ProN", serif; 
 
 a { color: var(--ai); }
 
+.sync-status {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .8rem;
+  margin: 0 0 1rem; padding: .65rem .85rem; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--card); color: var(--ai); font-size: .875rem;
+}
+.sync-status[data-state="error"], .sync-status[data-state="conflict"],
+.sync-status[data-state="offline"] { background: #fff2db; color: #703c13; border-color: #d2a46a; }
+.sync-status button { font: inherit; color: inherit; background: white; border: 1px solid currentColor; border-radius: 5px; padding: .35rem .6rem; cursor: pointer; }
+.sync-status button[hidden] { display: none; }
+
 /* ===== ヒーロー ===== */
 .hero {
   background:
